@@ -74,12 +74,33 @@ async def run_scan_cycle():
                 df_4h_ha = calculate_heikin_ashi(df_4h.copy())
                 current_ha_state = get_ha_trend(df_4h_ha)
                 
+                # Record HA state for ALL symbols when live trading is enabled
+                # This ensures we track flips even before signals are generated
+                if live_trader.enabled:
+                    # Check for flip and record state for this symbol
+                    # is_new_flip will record state if first time seeing symbol
+                    is_flip = live_trader.is_new_flip(symbol, current_ha_state)
+                    
+                    if is_flip:
+                        # A flip happened! Generate signal if BASE strategy agrees
+                        for strategy in get_all_strategies():
+                            if strategy.strategy_id == LIVE_STRATEGY:
+                                signal = strategy.generate_signal(
+                                    symbol=symbol,
+                                    df_4h=df_4h,
+                                    df_5m=df_5m,
+                                    df_15m=df_15m,
+                                    df_1h=df_1h
+                                )
+                                if signal and signal.direction:
+                                    live_trader.execute_trade(signal)
+                
                 # Save candles
                 for tf, df in data.items():
                     if df is not None and not df.empty:
                         scanner.save_candles(symbol, tf, df)
                 
-                # Run all strategies
+                # Run all strategies for paper trading
                 for strategy in get_all_strategies():
                     signal = strategy.generate_signal(
                         symbol=symbol,
@@ -94,10 +115,6 @@ async def run_scan_cycle():
                         trade = paper_trader.execute_signal(signal)
                         if trade:
                             strategy.set_entry_time(symbol)
-                        
-                        # LIVE TRADING - only BASE strategy
-                        if strategy.strategy_id == LIVE_STRATEGY and live_trader.enabled:
-                            live_trader.execute_signal(signal, current_ha_state)
                 
             except Exception as e:
                 print(f"Error processing {symbol}: {e}")

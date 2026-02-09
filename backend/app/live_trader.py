@@ -194,6 +194,89 @@ class LiveTrader:
             
             return order_id
     
+    def execute_trade(self, signal: Signal) -> Optional[str]:
+        """
+        Execute a live trade (flip already confirmed by main loop).
+        
+        Args:
+            signal: Trading signal from strategy
+            
+        Returns:
+            Order ID if successful, None otherwise
+        """
+        if not self.enabled:
+            return None
+        
+        with self._lock:
+            # Check position limit
+            if not self.can_open_position():
+                print(f"⚠️ Max positions ({self.max_positions}) reached, skipping {signal.symbol}")
+                return None
+            
+            # Check if already in position for this symbol
+            positions = self.client.get_positions(signal.symbol)
+            if positions:
+                print(f"⚠️ Already have position in {signal.symbol}, skipping")
+                return None
+            
+            # Set leverage
+            if not self.client.set_leverage(signal.symbol, self.leverage):
+                print(f"⚠️ Failed to set leverage for {signal.symbol}")
+            
+            # Calculate quantity
+            qty = self.client.calculate_qty(signal.symbol, self.trade_size_usd, self.leverage)
+            if not qty:
+                print(f"❌ Failed to calculate qty for {signal.symbol}")
+                return None
+            
+            # Place market order
+            side = "Buy" if signal.direction == "LONG" else "Sell"
+            order_id = self.client.place_market_order(signal.symbol, side, qty)
+            
+            if not order_id:
+                print(f"❌ Failed to place order for {signal.symbol}")
+                return None
+            
+            # Set initial stop loss
+            self.client.set_trading_stop(
+                signal.symbol, 
+                side,
+                stop_loss=signal.stop_loss
+            )
+            
+            # Track position locally
+            self.positions[signal.symbol] = {
+                "order_id": order_id,
+                "symbol": signal.symbol,
+                "side": signal.direction,
+                "entry_price": signal.entry_price,
+                "stop_loss": signal.stop_loss,
+                "current_sl": signal.stop_loss,
+                "entry_time": datetime.now(timezone.utc).isoformat(),
+                "take_profits": [
+                    signal.take_profit_1, signal.take_profit_2, signal.take_profit_3,
+                    signal.take_profit_4, signal.take_profit_5, signal.take_profit_6,
+                    signal.take_profit_7, signal.take_profit_8, signal.take_profit_9,
+                    signal.take_profit_10
+                ],
+                "tp_hit": [False] * 10
+            }
+            
+            # Log the trade
+            logger.trade_opened(signal.symbol, signal.direction, signal.entry_price, qty)
+            logger.sl_set(signal.symbol, signal.stop_loss)
+            logger.tp_set(signal.symbol, {
+                1: signal.take_profit_1, 2: signal.take_profit_2, 3: signal.take_profit_3,
+                4: signal.take_profit_4, 5: signal.take_profit_5, 6: signal.take_profit_6,
+                7: signal.take_profit_7, 8: signal.take_profit_8, 9: signal.take_profit_9,
+                10: signal.take_profit_10
+            })
+            
+            print(f"🔴 LIVE TRADE: {signal.direction} {signal.symbol} | Qty: {qty} | Entry: {signal.entry_price:.4f}")
+            print(f"   SL: {signal.stop_loss:.4f} | TP10: {signal.take_profit_10:.4f}")
+            
+            return order_id
+    
     def update_positions(self):
         """
         Update all positions - check TPs and adjust trailing SL.
