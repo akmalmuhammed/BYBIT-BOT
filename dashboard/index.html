@@ -182,6 +182,18 @@
 
         /* Empty State */
         .empty { text-align: center; color: #666; padding: 30px; }
+
+        /* Close position button */
+        .btn-close-pos {
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            background: #ff5252;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-close-pos:hover { background: #ff1744; }
     </style>
 </head>
 <body>
@@ -284,7 +296,7 @@
         // Fetch positions
         async function fetchPositions() {
             try {
-                const res = await fetch(`${API_BASE}/positions`);
+                const res = await fetch(`${API_BASE}/live/positions`);
                 const positions = await res.json();
                 
                 const container = document.getElementById('positions-table');
@@ -302,6 +314,7 @@
                         <th>PnL</th>
                         <th>TPs</th>
                         <th>SL</th>
+                        <th>Action</th>
                     </tr>`;
 
                 positions.forEach(p => {
@@ -320,6 +333,7 @@
                         <td class="${pnlClass}">${(p.unrealized_pnl_pct || 0).toFixed(1)}%</td>
                         <td>${tpsHit}/10</td>
                         <td>${p.current_sl?.toFixed(2) || '-'}</td>
+                        <td><button class="btn-close-pos" onclick="closePosition('${p.symbol}')">✕ Close</button></td>
                     </tr>`;
                 });
 
@@ -328,6 +342,19 @@
 
             } catch (e) {
                 console.error('Positions fetch failed:', e);
+            }
+        }
+
+        // Close single position
+        async function closePosition(symbol) {
+            if (!confirm(`Close ${symbol} position?`)) return;
+            try {
+                const res = await fetch(`${API_BASE}/live/close/${symbol}`, { method: 'POST' });
+                const data = await res.json();
+                alert(data.message);
+                refreshData();
+            } catch (e) {
+                alert('Failed to close position');
             }
         }
 

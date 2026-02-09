@@ -350,6 +350,64 @@ async def start_live_trading():
     }
 
 
+@router.get("/live/positions")
+async def get_live_positions():
+    """Get all open positions from Bybit with PnL."""
+    from ..bybit_client import get_client
+    from ..live_trader import get_live_trader
+    
+    try:
+        client = get_client()
+        trader = get_live_trader()
+        positions = client.get_positions()
+        
+        result = []
+        for pos in positions:
+            symbol = pos["symbol"]
+            local_pos = trader.positions.get(symbol, {})
+            
+            entry_price = float(pos.get("avgPrice", 0))
+            current_price = float(pos.get("markPrice", 0))
+            side = "LONG" if pos["side"] == "Buy" else "SHORT"
+            
+            # Calculate PnL percentage
+            if entry_price > 0:
+                if side == "LONG":
+                    pnl_pct = ((current_price - entry_price) / entry_price) * 100 * 8  # 8x leverage
+                else:
+                    pnl_pct = ((entry_price - current_price) / entry_price) * 100 * 8
+            else:
+                pnl_pct = 0
+            
+            # Get TP hit status from local tracking
+            tp_hit = local_pos.get("tp_hit", [False] * 10)
+            
+            result.append({
+                "symbol": symbol,
+                "side": side,
+                "entry_price": entry_price,
+                "current_price": current_price,
+                "current_sl": local_pos.get("current_sl", 0),
+                "unrealized_pnl_pct": pnl_pct,
+                "qty": float(pos.get("size", 0)),
+                "tp1_hit": tp_hit[0] if len(tp_hit) > 0 else False,
+                "tp2_hit": tp_hit[1] if len(tp_hit) > 1 else False,
+                "tp3_hit": tp_hit[2] if len(tp_hit) > 2 else False,
+                "tp4_hit": tp_hit[3] if len(tp_hit) > 3 else False,
+                "tp5_hit": tp_hit[4] if len(tp_hit) > 4 else False,
+                "tp6_hit": tp_hit[5] if len(tp_hit) > 5 else False,
+                "tp7_hit": tp_hit[6] if len(tp_hit) > 6 else False,
+                "tp8_hit": tp_hit[7] if len(tp_hit) > 7 else False,
+                "tp9_hit": tp_hit[8] if len(tp_hit) > 8 else False,
+                "tp10_hit": tp_hit[9] if len(tp_hit) > 9 else False,
+            })
+        
+        return result
+    except Exception as e:
+        print(f"Error fetching positions: {e}")
+        return []
+
+
 @router.post("/live/stop")
 async def stop_live_trading():
     """Stop live trading."""
@@ -406,6 +464,46 @@ async def emergency_close_all():
         "status": "closed",
         "message": "🚨 All positions closed"
     }
+
+
+@router.post("/live/close/{symbol}")
+async def close_single_position(symbol: str):
+    """Close a specific position by symbol."""
+    from ..live_trader import get_live_trader
+    from ..bybit_client import get_client
+    from ..activity_logger import logger
+    
+    try:
+        client = get_client()
+        trader = get_live_trader()
+        
+        # Get position side from Bybit
+        positions = client.get_positions(symbol)
+        if not positions:
+            return {"status": "error", "message": f"No position found for {symbol}"}
+        
+        pos = positions[0]
+        side = "LONG" if pos["side"] == "Buy" else "SHORT"
+        
+        # Close the position
+        client.close_position(symbol, side)
+        
+        # Remove from local tracking
+        if symbol in trader.positions:
+            del trader.positions[symbol]
+        
+        # Log it
+        logger._add("MANUAL_CLOSE", symbol, f"Position manually closed from dashboard", {})
+        
+        return {
+            "status": "closed",
+            "message": f"✅ Closed {symbol} position"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 
 @router.get("/live/balance")
