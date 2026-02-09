@@ -80,7 +80,6 @@
         .btn-start { background: #00c853; color: #000; }
         .btn-start:hover { background: #00e676; transform: scale(1.02); }
         .btn-stop { background: #ff5252; color: #fff; }
-        .btn-scan { background: #2196f3; color: #fff; }
         .btn-emergency { background: #ff9100; color: #000; }
         .btn-refresh { background: rgba(255,255,255,0.1); color: #fff; }
 
@@ -230,7 +229,6 @@
         <div class="controls">
             <button class="btn-start" onclick="startTrading()">▶️ Start Live</button>
             <button class="btn-stop" onclick="stopTrading()">⏹️ Stop</button>
-            <button class="btn-scan" onclick="runScan()">🔍 Run Scan</button>
             <button class="btn-emergency" onclick="emergencyClose()">🚨 Close All</button>
             <button class="btn-refresh" onclick="refreshData()">🔄 Refresh</button>
         </div>
@@ -480,20 +478,6 @@
 
             } catch (e) {
                 console.error('HA status fetch failed:', e);
-            }
-        }
-
-        async function runScan() {
-            if (!confirm('Start manual scan? This may take ~30s.')) return;
-            try {
-                const res = await fetch(`${API_BASE}/scan/start`, { method: 'POST' });
-                const data = await res.json();
-                alert(data.message);
-                
-                // Refresh logs after a delay
-                setTimeout(refreshData, 5000);
-            } catch (e) {
-                alert('Scan trigger failed');
             }
         }
 

@@ -1,61 +1,255 @@
-# Update Live Dashboard on GCP (v2)
+# Update Live Dashboard on GCP
 
 ## Changes Made
 
-1. **Manual Scan Button** - Trigger a scan instantly from the dashboard
-2. **Scan Endpoint** - Added `/api/scan/start` to force a scan cycle
-3. **HA Status Table** - Shows real-time Heikin Ashi trends (from previous update)
-4. **Fetch Logs Filter** - See scan activity (from previous update)
+Added two new features to the live dashboard:
+
+1. **HA Status Table** - Shows real-time Heikin Ashi trends for all symbols
+2. **Fetch Logs Filter** - Filter activity logs to see data fetching events
 
 ## Files Modified
 
-1. `backend/app/api/routes.py` - Added `/api/scan/start` endpoint and fixed HA logic
-2. `dashboard/index.html` - Added "Run Scan" button and handler
+1. `backend/app/api/routes.py` - Added `/api/ha-status` endpoint
+2. `dashboard/index.html` - Added HA status section and fetch logs filter
 
 ## Deployment Steps
 
-### Step 1: Push Changes to GitHub
-
-Run this on your LOCAL machine:
+### Option 1: Git Push & Pull (Recommended)
 
 ```bash
+# On your local machine
 cd C:\Users\akmal\.gemini\antigravity\scratch\bybit-paper-trader
 git add .
-git commit -m "Add manual scan button and fix HA status"
+git commit -m "Add HA status and fetch logs to dashboard"
 git push origin main
-```
 
-### Step 2: Update GCP Bot
-
-Run this on your GCP terminal (SSH):
-
-```bash
-# 1. SSH into VM
+# SSH into GCP VM
 gcloud compute ssh YOUR_VM --zone=YOUR_ZONE
 
-# 2. Update code
+# Pull updates
 cd BYBIT-BOT
 git pull origin main
 
-# 3. Restart services
+# Restart containers
 docker-compose down
 docker-compose up -d --build
 ```
 
-### Step 3: Use the New Features
+### Option 2: Manual File Upload
 
-1. Go to http://34.177.84.234/
-2. Hard refresh (Ctrl+F5)
-3. Click the **"🔍 Run Scan"** button in blue
-4. Wait ~30 seconds and check the **"Fetch"** logs or **HA Status** table
+**Upload these 2 files to your GCP VM:**
 
-## Troubleshooting Empty HA Status
+1. `backend/app/api/routes.py`
+2. `dashboard/index.html`
 
-If the HA Status table is still empty:
+```bash
+# From your local machine
+gcloud compute scp backend/app/api/routes.py YOUR_VM:~/BYBIT-BOT/backend/app/api/routes.py --zone=YOUR_ZONE
+gcloud compute scp dashboard/index.html YOUR_VM:~/BYBIT-BOT/dashboard/index.html --zone=YOUR_ZONE
 
-1. Click **"Run Scan"**
-2. Click **"Fetch"** in Activity Log to see if it says "Scanning 15 symbols..."
-3. If logs show errors, check container logs on GCP:
-   ```bash
-   docker logs bybit-live-trader --tail 50
-   ```
+# SSH into VM
+gcloud compute ssh YOUR_VM --zone=YOUR_ZONE
+
+# Restart containers
+cd BYBIT-BOT
+docker-compose down
+docker-compose up -d --build
+```
+
+### Option 3: Direct Edit on VM
+
+```bash
+# SSH into GCP VM
+gcloud compute ssh YOUR_VM --zone=YOUR_ZONE
+
+# Edit routes.py
+cd BYBIT-BOT/backend/app/api
+nano routes.py
+# Add the /ha-status endpoint at the end (see below)
+
+# Edit dashboard
+cd ~/BYBIT-BOT/dashboard
+nano index.html
+# Add HA status section and update JavaScript (see below)
+
+# Restart
+cd ~/BYBIT-BOT
+docker-compose down
+docker-compose up -d --build
+```
+
+## New Endpoint Code
+
+Add this to `backend/app/api/routes.py` at the end (after the `/logs` endpoint):
+
+```python
+@router.get("/ha-status")
+async def get_ha_status():
+    """Get current HA status for all monitored symbols."""
+    from ..live_trader import get_live_trader
+    from ..indicators import calculate_heikin_ashi, get_ha_trend
+    from datetime import datetime, timezone
+
+    trader = get_live_trader()
+    symbols = scanner.get_top_futures_symbols()
+
+    ha_status = []
+
+    for symbol in symbols[:20]:  # Top 20 symbols
+        try:
+            # Get 4H candles
+            df = scanner.load_candles(symbol, "240")
+            if df.empty:
+                continue
+
+            # Calculate HA
+            df_ha = calculate_heikin_ashi(df.copy())
+            current_trend = get_ha_trend(df_ha)
+
+            # Get last candle time
+            last_candle_time = df.iloc[-1]['timestamp']
+            if hasattr(last_candle_time, 'isoformat'):
+                last_candle_time = last_candle_time.isoformat()
+
+            # Get recorded state from live trader
+            recorded_state = trader.ha_states.get(symbol, {}).get("state", "unknown")
+
+            ha_status.append({
+                "symbol": symbol,
+                "current_trend": current_trend,
+                "recorded_state": recorded_state,
+                "last_update": last_candle_time,
+                "is_flip_ready": current_trend != recorded_state if recorded_state != "unknown" else False
+            })
+        except Exception as e:
+            continue
+
+    return {"ha_status": ha_status, "count": len(ha_status)}
+```
+
+## Dashboard Changes
+
+### 1. Add "Fetch" filter button (line ~251)
+
+Change:
+
+```html
+<button class="filter-btn" data-filter="SL">SL Events</button>
+<button class="filter-btn" data-filter="SYSTEM">System</button>
+```
+
+To:
+
+```html
+<button class="filter-btn" data-filter="SL">SL Events</button>
+<button class="filter-btn" data-filter="SCAN">Fetch</button>
+<button class="filter-btn" data-filter="SYSTEM">System</button>
+```
+
+### 2. Add HA Status section (after line ~257, after the grid-2col closing div)
+
+```html
+<!-- HA Status Section -->
+<div class="section">
+  <div class="section-title">📊 Heikin Ashi Status (4H)</div>
+  <div id="ha-status-table">
+    <p class="empty">Loading HA status...</p>
+  </div>
+</div>
+```
+
+### 3. Add fetchHAStatus function (before refreshData function, around line ~437)
+
+```javascript
+// Fetch HA Status
+async function fetchHAStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/ha-status`);
+    const data = await res.json();
+
+    const container = document.getElementById("ha-status-table");
+    const haList = data.ha_status || [];
+
+    if (haList.length === 0) {
+      container.innerHTML = '<p class="empty">No HA data available</p>';
+      return;
+    }
+
+    let html = `<table>
+            <tr>
+                <th>Symbol</th>
+                <th>Current Trend</th>
+                <th>Recorded State</th>
+                <th>Status</th>
+                <th>Last Update</th>
+            </tr>`;
+
+    haList.forEach((ha) => {
+      const trendClass = ha.current_trend === "bullish" ? "long" : "short";
+      const recordedClass = ha.recorded_state === "bullish" ? "long" : "short";
+      const statusText = ha.is_flip_ready ? "🔄 FLIP READY" : "✓ Tracking";
+      const statusClass = ha.is_flip_ready ? "pnl-positive" : "";
+
+      html += `<tr>
+                <td><strong>${ha.symbol}</strong></td>
+                <td class="${trendClass}">${ha.current_trend.toUpperCase()}</td>
+                <td class="${recordedClass}">${ha.recorded_state.toUpperCase()}</td>
+                <td class="${statusClass}">${statusText}</td>
+                <td>${formatTime(ha.last_update)}</td>
+            </tr>`;
+    });
+
+    html += "</table>";
+    container.innerHTML = html;
+  } catch (e) {
+    console.error("HA status fetch failed:", e);
+  }
+}
+```
+
+### 4. Update refreshData function (around line ~438)
+
+Change:
+
+```javascript
+function refreshData() {
+  fetchStatus();
+  fetchPositions();
+  fetchLogs();
+}
+```
+
+To:
+
+```javascript
+function refreshData() {
+  fetchStatus();
+  fetchPositions();
+  fetchLogs();
+  fetchHAStatus();
+}
+```
+
+## Verify Deployment
+
+After deployment, visit http://34.177.84.234/ and you should see:
+
+- ✅ New "Fetch" filter button in Activity Log
+- ✅ New "Heikin Ashi Status (4H)" section at the bottom
+- ✅ Table showing all symbols with their HA trends
+- ✅ "FLIP READY" indicator when trends change
+
+## Troubleshooting
+
+If the dashboard doesn't update:
+
+```bash
+# Check container logs
+docker-compose logs -f
+
+# Hard refresh browser (Ctrl+Shift+R)
+
+# Verify files were updated
+docker exec bybit-live-trader cat /app/app/api/routes.py | grep "ha-status"
+docker exec bybit-dashboard cat /usr/share/nginx/html/index.html | grep "HA Status"
+```
