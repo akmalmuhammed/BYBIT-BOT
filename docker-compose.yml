@@ -5,16 +5,23 @@ services:
     build: ./backend
     container_name: bybit-live-trader
     restart: always
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     environment:
       - BYBIT_API_KEY=${BYBIT_API_KEY}
       - BYBIT_API_SECRET=${BYBIT_API_SECRET}
       - BYBIT_TESTNET=false
     volumes:
       - ./backend/data:/app/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    container_name: bybit-dashboard
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./dashboard:/usr/share/nginx/html:ro
+    depends_on:
+      - bot
