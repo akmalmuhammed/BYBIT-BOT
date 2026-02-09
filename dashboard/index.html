@@ -257,6 +257,33 @@
             </div>
         </div>
 
+        <!-- Fetch Report Section -->
+        <div class="section">
+            <div class="section-title">📡 Data Fetch Status</div>
+            <div class="stats-grid" id="fetch-stats">
+                <div class="stat-card">
+                    <div id="fetch-last" class="stat-value" style="font-size: 1.2rem; color: #fff">--:--</div>
+                    <div class="stat-label">Last Scan</div>
+                </div>
+                <div class="stat-card">
+                    <div id="fetch-next" class="stat-value" style="font-size: 1.2rem; color: #fff">--s</div>
+                    <div class="stat-label">Next Scan In</div>
+                </div>
+                <div class="stat-card">
+                    <div id="fetch-duration" class="stat-value" style="font-size: 1.2rem; color: #64b5f6">0s</div>
+                    <div class="stat-label">Duration</div>
+                </div>
+                <div class="stat-card">
+                    <div id="fetch-errors" class="stat-value" style="font-size: 1.2rem; color: #00c853">0</div>
+                    <div class="stat-label">Errors</div>
+                </div>
+                <div class="stat-card">
+                    <div id="fetch-status-text" class="stat-value" style="font-size: 1.2rem; color: #888">Idle</div>
+                    <div class="stat-label">Status</div>
+                </div>
+            </div>
+        </div>
+
         <!-- HA Status Section -->
         <div class="section">
             <div class="section-title">📊 Heikin Ashi Status (4H)</div>
@@ -481,11 +508,40 @@
             }
         }
 
+        // Fetch Report
+        async function fetchFetchReport() {
+            try {
+                const res = await fetch(`${API_BASE}/fetch/status`);
+                const data = await res.json();
+                
+                document.getElementById('fetch-last').textContent = data.last_scan_time ? formatTime(data.last_scan_time) : 'Never';
+                document.getElementById('fetch-next').textContent = data.next_scan_in_seconds > 0 ? `${Math.round(data.next_scan_in_seconds)}s` : 'Now';
+                document.getElementById('fetch-duration').textContent = `${data.scan_duration_seconds}s`;
+                
+                const errorEl = document.getElementById('fetch-errors');
+                errorEl.textContent = data.errors;
+                errorEl.style.color = data.errors > 0 ? '#ff5252' : '#00c853';
+                
+                const statusEl = document.getElementById('fetch-status-text');
+                if (data.is_scanning) {
+                    statusEl.textContent = 'Scanning...';
+                    statusEl.style.color = '#ff9100';
+                } else {
+                    statusEl.textContent = 'Idle';
+                    statusEl.style.color = '#888';
+                }
+
+            } catch (e) {
+                console.error('Fetch report failed:', e);
+            }
+        }
+
         function refreshData() {
             fetchStatus();
             fetchPositions();
             fetchLogs();
             fetchHAStatus();
+            fetchFetchReport();
         }
 
         // Auto-refresh

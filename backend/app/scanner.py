@@ -28,6 +28,10 @@ class BybitScanner:
         )
         self._top_symbols: List[str] = []
         self._last_refresh = None
+        self._last_scan_time = None
+        self._scan_duration = 0
+        self._scan_errors = 0
+        self._is_scanning = False
     
     def get_top_futures_symbols(self, limit: int = TOP_COINS_COUNT) -> List[str]:
         """
@@ -184,21 +188,40 @@ class BybitScanner:
     def scan_all_symbols(self, timeframes: List[str] = ["5", "240"]) -> Dict[str, Dict[str, pd.DataFrame]]:
         """
         Scan all top symbols and fetch candles for specified timeframes.
-        
-        Returns:
-            Dict[symbol, Dict[timeframe, DataFrame]]
         """
-        symbols = self.get_top_futures_symbols()
-        result = {}
+        self._is_scanning = True
+        self._scan_errors = 0
+        start_time = datetime.now(timezone.utc)
         
-        for symbol in symbols:
-            result[symbol] = self.fetch_multi_timeframe(symbol, timeframes)
+        try:
+            symbols = self.get_top_futures_symbols()
+            result = {}
             
-            # Save to disk
-            for tf, df in result[symbol].items():
-                self.save_candles(symbol, tf, df)
-        
-        return result
+            for symbol in symbols:
+                try:
+                    result[symbol] = self.fetch_multi_timeframe(symbol, timeframes)
+                    
+                    # Save to disk
+                    for tf, df in result[symbol].items():
+                        self.save_candles(symbol, tf, df)
+                except Exception:
+                    self._scan_errors += 1
+            
+            return result
+        finally:
+            self._last_scan_time = start_time
+            self._scan_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            self._is_scanning = False
+            
+    def get_scan_status(self) -> Dict:
+        """Get status of last scan cycle."""
+        return {
+            "last_scan_time": self._last_scan_time.isoformat() if self._last_scan_time else None,
+            "scan_duration_seconds": round(self._scan_duration, 2),
+            "errors": self._scan_errors,
+            "is_scanning": self._is_scanning,
+            "next_scan_in_seconds": 300 - (datetime.now(timezone.utc) - self._last_scan_time).total_seconds() if self._last_scan_time else 0
+        }
 
 
 # Singleton instance

@@ -1,6 +1,12 @@
 """
 Strategy Engine
 Base strategy class and all variations for 4H HA flip strategy
+
+FIXES:
+- generate_signal() accepts forced_direction to skip internal flip detection
+  (used when live_trader already confirmed the flip)
+- detect_flip() is now purely DataFrame-based (no internal state tracking)
+  to avoid state desync between live_trader and strategy
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -59,9 +65,6 @@ class BaseStrategy(ABC):
         
         # Track last entry time per symbol for cooldown
         self._last_entry: Dict[str, datetime] = {}
-        
-        # Track previous HA state per symbol for flip detection
-        self._prev_ha_state: Dict[str, str] = {}
     
     def is_in_cooldown(self, symbol: str) -> bool:
         """Check if symbol is in cooldown period."""
@@ -75,39 +78,51 @@ class BaseStrategy(ABC):
         """Mark entry time for cooldown tracking."""
         self._last_entry[symbol] = datetime.now(timezone.utc)
     
-    def detect_flip(self, symbol: str, df_4h: pd.DataFrame) -> Optional[str]:
+    def detect_flip(self, df_4h: pd.DataFrame) -> Optional[str]:
         """
-        Detect 4H Heikin-Ashi flip.
+        Detect 4H Heikin-Ashi flip using ONLY completed candles.
+        Pure DataFrame-based - no internal state tracking.
+        
+        Compares the last two COMPLETED candles (excludes current forming candle).
         
         Returns:
             'bullish', 'bearish', or None
         """
-        if len(df_4h) < 2:
+        # Need at least 3 candles: 2 completed + 1 current (forming)
+        if len(df_4h) < 3:
             return None
         
         df_ha = calculate_heikin_ashi(df_4h)
         
-        prev = df_ha.iloc[-2]
-        curr = df_ha.iloc[-1]
+        # Use [-3] and [-2] = last two COMPLETED candles 
+        # ([-1] is the current forming candle, skip it)
+        prev = df_ha.iloc[-3]
+        curr = df_ha.iloc[-2]
         
         prev_bullish = prev['HA_close'] > prev['HA_open']
         curr_bullish = curr['HA_close'] > curr['HA_open']
         
-        # Store current state
-        current_state = 'bullish' if curr_bullish else 'bearish'
-        prev_stored = self._prev_ha_state.get(symbol)
-        self._prev_ha_state[symbol] = current_state
-        
-        # Detect flip
-        if prev_stored is None:
-            return None  # First candle, no flip possible
-        
-        if prev_stored == 'bearish' and current_state == 'bullish':
+        if not prev_bullish and curr_bullish:
             return 'bullish'
-        elif prev_stored == 'bullish' and current_state == 'bearish':
+        elif prev_bullish and not curr_bullish:
             return 'bearish'
         
         return None
+    
+    def get_current_ha_state(self, df_4h: pd.DataFrame) -> str:
+        """
+        Get the HA state of the LAST COMPLETED candle.
+        
+        Returns:
+            'bullish' or 'bearish'
+        """
+        if len(df_4h) < 2:
+            return 'neutral'
+        
+        df_ha = calculate_heikin_ashi(df_4h)
+        # [-2] is the last completed candle, [-1] is current forming
+        last_completed = df_ha.iloc[-2]
+        return 'bullish' if last_completed['HA_close'] > last_completed['HA_open'] else 'bearish'
     
     def calculate_targets(self, 
                           entry_price: float, 
@@ -151,7 +166,8 @@ class BaseStrategy(ABC):
                         df_4h: pd.DataFrame,
                         df_5m: pd.DataFrame,
                         df_15m: Optional[pd.DataFrame] = None,
-                        df_1h: Optional[pd.DataFrame] = None) -> Optional[Signal]:
+                        df_1h: Optional[pd.DataFrame] = None,
+                        forced_direction: Optional[str] = None) -> Optional[Signal]:
         """
         Generate trading signal for a symbol.
         
@@ -161,6 +177,8 @@ class BaseStrategy(ABC):
             df_5m: 5m candles for execution and indicators
             df_15m: 15m candles (optional, for Var A ATR)
             df_1h: 1H candles (optional, for Var C RSI)
+            forced_direction: If set ("LONG" or "SHORT"), skip flip detection.
+                             Used when live_trader already confirmed the flip.
             
         Returns:
             Signal if conditions met, None otherwise
@@ -173,12 +191,16 @@ class BaseStrategy(ABC):
         if len(df_4h) < 5 or len(df_5m) < 50:
             return None
         
-        # Detect 4H HA flip
-        flip = self.detect_flip(symbol, df_4h)
-        if not flip:
-            return None
-        
-        direction = "LONG" if flip == "bullish" else "SHORT"
+        if forced_direction:
+            # Live trader already confirmed the flip - use forced direction
+            direction = forced_direction
+            flip = "bullish" if direction == "LONG" else "bearish"
+        else:
+            # Detect 4H HA flip from DataFrame (for paper trading)
+            flip = self.detect_flip(df_4h)
+            if not flip:
+                return None
+            direction = "LONG" if flip == "bullish" else "SHORT"
         
         # Add indicators to 5m
         df_5m_ind = add_all_indicators(df_5m)
@@ -200,6 +222,11 @@ class BaseStrategy(ABC):
             atr = atr_df.iloc[-1]['ATR']
         else:
             atr = df_5m_ind.iloc[-1]['ATR']
+        
+        # Safety check: skip if ATR is NaN or zero
+        if pd.isna(atr) or atr <= 0:
+            print(f"⚠️ Invalid ATR for {symbol}: {atr}")
+            return None
         
         # Calculate targets
         targets = self.calculate_targets(current_price, direction, atr)
@@ -324,22 +351,18 @@ class VariationC(BaseStrategy):
         reasons = []
         
         if direction == "LONG":
-            # 1H RSI > 50
             if rsi_1h <= 50:
                 return False, f"1H RSI={rsi_1h:.1f} <= 50"
             reasons.append(f"1H RSI={rsi_1h:.1f}>50")
             
-            # Price > VWAP
             if price <= vwap:
                 return False, f"Price <= VWAP"
             reasons.append("Price>VWAP")
             
-            # Volume filter
             if not volume_ok:
                 return False, f"Volume too low"
             reasons.append("Vol>1.5x avg")
             
-            # ATR expanding
             if not atr_expanding:
                 return False, f"ATR not expanding"
             reasons.append("ATR expanding")
@@ -368,7 +391,6 @@ class VariationC(BaseStrategy):
 
 # ============ STRATEGY REGISTRY ============
 
-# Extensible registry for adding more variations
 STRATEGIES: Dict[str, BaseStrategy] = {
     "base": BaseFlipStrategy(),
     "var_a": VariationA(),

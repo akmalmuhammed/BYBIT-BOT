@@ -1,5 +1,8 @@
 """
 Configuration for Paper Trading System
+
+FIXES:
+- BYBIT_TESTNET defaults to false (was true, causing data mismatch)
 """
 import os
 from dotenv import load_dotenv
@@ -10,7 +13,8 @@ load_dotenv()
 # Bybit API
 BYBIT_API_KEY = os.getenv("BYBIT_API_KEY", "")
 BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET", "")
-BYBIT_TESTNET = os.getenv("BYBIT_TESTNET", "true").lower() == "true"
+# IMPORTANT: Set to "false" for mainnet data. "true" uses testnet which has different prices!
+BYBIT_TESTNET = os.getenv("BYBIT_TESTNET", "false").lower() == "true"
 
 # Data paths
 BASE_DIR = Path(__file__).parent.parent

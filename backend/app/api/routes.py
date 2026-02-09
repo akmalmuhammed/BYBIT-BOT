@@ -1,6 +1,11 @@
 """
 API Routes
 REST endpoints for dashboard
+
+FIXES:
+- /ha-status: ha_states is Dict[str, str], not nested dict
+- /ha-candles: uses correct HA column names (HA_open, HA_close, etc.)
+- Added /debug/scan-info endpoint for troubleshooting
 """
 from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Optional
@@ -96,7 +101,7 @@ async def get_strategies():
 
 @router.get("/symbols")
 async def get_symbols():
-    """Get top 60 futures symbols."""
+    """Get top futures symbols."""
     symbols = scanner.get_top_futures_symbols()
     return {"symbols": symbols, "count": len(symbols)}
 
@@ -109,8 +114,8 @@ async def get_trades(
 ):
     """Get trade history."""
     trades = storage.get_trades(strategy_id=strategy_id, status=status)
-    trades = trades[-limit:]  # Most recent
-    
+    trades = trades[-limit:]
+
     return [
         TradeResponse(
             id=t.id,
@@ -148,16 +153,14 @@ async def get_positions(strategy_id: Optional[str] = None):
     result = []
     
     for p in positions:
-        # Get current price from latest candle
         current_price = None
         df = scanner.load_candles(p.symbol, "5")
         if not df.empty:
             current_price = float(df.iloc[-1]['close'])
         
-        # Calculate unrealized PnL
         unrealized_pnl_pct = None
         unrealized_pnl_usd = None
-        trade_size_usd = 100.0  # Default
+        trade_size_usd = 100.0
         
         if current_price:
             if p.side == "LONG":
@@ -165,10 +168,8 @@ async def get_positions(strategy_id: Optional[str] = None):
             else:
                 pnl_pct = ((p.entry_price - current_price) / p.entry_price) * 100
             
-            # Apply leverage
             unrealized_pnl_pct = round(pnl_pct * LEVERAGE, 2)
             
-            # Get trade size from open trades
             trades = storage.get_trades(strategy_id=p.strategy_id, symbol=p.symbol, status="OPEN")
             if trades:
                 trade_size_usd = trades[0].trade_size_usd
@@ -238,7 +239,6 @@ async def get_strategy_comparison():
             "total_pnl": perf.get("total_pnl_pct", 0)
         })
     
-    # Sort by win rate
     comparison.sort(key=lambda x: x["win_rate"], reverse=True)
     
     return {"comparison": comparison}
@@ -250,13 +250,11 @@ async def get_candles(symbol: str, timeframe: str = "5"):
     df = scanner.load_candles(symbol, timeframe)
     
     if df.empty:
-        # Try to fetch fresh
         df = scanner.fetch_klines(symbol, interval=timeframe)
         if df.empty:
             raise HTTPException(status_code=404, detail="No candles found")
         scanner.save_candles(symbol, timeframe, df)
     
-    # Convert to list of dicts
     records = df.tail(100).to_dict(orient='records')
     for r in records:
         if hasattr(r.get('timestamp'), 'isoformat'):
@@ -284,7 +282,7 @@ async def get_account():
 @router.get("/ha-candles/{symbol}")
 async def get_ha_candles(symbol: str, timeframe: str = "240"):
     """Get Heikin-Ashi candles with flip signals."""
-    from ..indicators import heikin_ashi
+    from ..indicators import calculate_heikin_ashi
     
     df = scanner.load_candles(symbol, timeframe)
     
@@ -295,27 +293,28 @@ async def get_ha_candles(symbol: str, timeframe: str = "240"):
         scanner.save_candles(symbol, timeframe, df)
     
     # Calculate Heikin-Ashi
-    ha_df = heikin_ashi(df)
+    ha_df = calculate_heikin_ashi(df)
     
     # Detect bullish/bearish and flips
     ha_candles = []
     prev_trend = None
     
     for i, row in ha_df.iterrows():
-        is_bullish = row['ha_close'] > row['ha_open']
+        # FIX: Use correct column names (HA_open, HA_close, etc.)
+        is_bullish = row['HA_close'] > row['HA_open']
         trend = "bullish" if is_bullish else "bearish"
         
         # Detect flip
         flip = None
         if prev_trend is not None and prev_trend != trend:
-            flip = trend  # "bullish" or "bearish" flip
+            flip = trend
         
         ha_candles.append({
             "timestamp": row['timestamp'].isoformat() if hasattr(row['timestamp'], 'isoformat') else str(row['timestamp']),
-            "open": round(row['ha_open'], 6),
-            "high": round(row['ha_high'], 6),
-            "low": round(row['ha_low'], 6),
-            "close": round(row['ha_close'], 6),
+            "open": round(row['HA_open'], 6),
+            "high": round(row['HA_high'], 6),
+            "low": round(row['HA_low'], 6),
+            "close": round(row['HA_close'], 6),
             "trend": trend,
             "flip": flip
         })
@@ -325,7 +324,7 @@ async def get_ha_candles(symbol: str, timeframe: str = "240"):
     return {
         "symbol": symbol,
         "timeframe": timeframe,
-        "candles": ha_candles[-100:]  # Last 100 candles
+        "candles": ha_candles[-100:]
     }
 
 
@@ -370,16 +369,14 @@ async def get_live_positions():
             current_price = float(pos.get("markPrice", 0))
             side = "LONG" if pos["side"] == "Buy" else "SHORT"
             
-            # Calculate PnL percentage
             if entry_price > 0:
                 if side == "LONG":
-                    pnl_pct = ((current_price - entry_price) / entry_price) * 100 * 8  # 8x leverage
+                    pnl_pct = ((current_price - entry_price) / entry_price) * 100 * 8
                 else:
                     pnl_pct = ((entry_price - current_price) / entry_price) * 100 * 8
             else:
                 pnl_pct = 0
             
-            # Get TP hit status from local tracking
             tp_hit = local_pos.get("tp_hit", [False] * 10)
             
             result.append({
@@ -431,11 +428,7 @@ async def get_live_status():
     try:
         trader = get_live_trader()
         client = get_client()
-        
-        # Get wallet balance
         balance = client.get_wallet_balance("USDT")
-        
-        # Get positions from Bybit
         positions = client.get_positions()
         
         return {
@@ -477,7 +470,6 @@ async def close_single_position(symbol: str):
         client = get_client()
         trader = get_live_trader()
         
-        # Get position side from Bybit
         positions = client.get_positions(symbol)
         if not positions:
             return {"status": "error", "message": f"No position found for {symbol}"}
@@ -485,14 +477,11 @@ async def close_single_position(symbol: str):
         pos = positions[0]
         side = "LONG" if pos["side"] == "Buy" else "SHORT"
         
-        # Close the position
         client.close_position(symbol, side)
         
-        # Remove from local tracking
         if symbol in trader.positions:
             del trader.positions[symbol]
         
-        # Log it
         logger._add("MANUAL_CLOSE", symbol, f"Position manually closed from dashboard", {})
         
         return {
@@ -539,7 +528,7 @@ async def get_activity_logs(limit: int = 100, event_type: str = None):
 async def get_ha_status():
     """Get current HA status for all monitored symbols."""
     from ..live_trader import get_live_trader
-    from ..indicators import calculate_heikin_ashi, get_ha_trend
+    from ..indicators import calculate_heikin_ashi
     from datetime import datetime, timezone
     
     trader = get_live_trader()
@@ -547,24 +536,24 @@ async def get_ha_status():
     
     ha_status = []
     
-    for symbol in symbols[:20]:  # Top 20 symbols
+    for symbol in symbols[:20]:
         try:
-            # Get 4H candles
             df = scanner.load_candles(symbol, "240")
-            if df.empty:
+            if df.empty or len(df) < 3:
                 continue
             
-            # Calculate HA
             df_ha = calculate_heikin_ashi(df.copy())
-            current_trend = get_ha_trend(df_ha)
             
-            # Get last candle time
-            last_candle_time = df.iloc[-1]['timestamp']
+            # Use LAST COMPLETED candle ([-2]) not current forming candle ([-1])
+            last_completed = df_ha.iloc[-2]
+            current_trend = 'bullish' if last_completed['HA_close'] > last_completed['HA_open'] else 'bearish'
+            
+            last_candle_time = df.iloc[-2]['timestamp']
             if hasattr(last_candle_time, 'isoformat'):
                 last_candle_time = last_candle_time.isoformat()
             
-            # Get recorded state from live trader
-            recorded_state = trader.ha_states.get(symbol, {}).get("state", "unknown")
+            # FIX: ha_states is Dict[str, str], not nested dict
+            recorded_state = trader.ha_states.get(symbol, "unknown")
             
             ha_status.append({
                 "symbol": symbol,
@@ -578,3 +567,50 @@ async def get_ha_status():
     
     return {"ha_status": ha_status, "count": len(ha_status)}
 
+
+@router.get("/fetch/status")
+async def get_fetch_status():
+    """Get status of data fetching."""
+    return scanner.get_scan_status()
+
+
+# ============ DEBUG ENDPOINT ============
+
+@router.get("/debug/scan-info")
+async def get_debug_scan_info():
+    """Debug endpoint: show scan diagnostics."""
+    from ..live_trader import get_live_trader
+    from ..indicators import calculate_heikin_ashi
+    from ..config import BYBIT_TESTNET, LIVE_STRATEGY
+    
+    trader = get_live_trader()
+    symbols = scanner.get_top_futures_symbols()
+    
+    # Check a sample symbol
+    sample_info = {}
+    if symbols:
+        sample = symbols[0]
+        df_4h = scanner.fetch_klines(sample, interval="240", limit=10)
+        if not df_4h.empty:
+            df_ha = calculate_heikin_ashi(df_4h)
+            sample_info = {
+                "symbol": sample,
+                "total_4h_candles": len(df_4h),
+                "last_candle_time": str(df_4h.iloc[-1]['timestamp']),
+                "second_last_candle_time": str(df_4h.iloc[-2]['timestamp']) if len(df_4h) >= 2 else None,
+                "last_ha_close": float(df_ha.iloc[-1]['HA_close']),
+                "last_ha_open": float(df_ha.iloc[-1]['HA_open']),
+                "last_candle_state": "bullish" if df_ha.iloc[-1]['HA_close'] > df_ha.iloc[-1]['HA_open'] else "bearish",
+                "completed_candle_state": "bullish" if df_ha.iloc[-2]['HA_close'] > df_ha.iloc[-2]['HA_open'] else "bearish" if len(df_ha) >= 2 else "N/A",
+            }
+    
+    return {
+        "testnet": BYBIT_TESTNET,
+        "live_strategy": LIVE_STRATEGY,
+        "live_enabled": trader.enabled,
+        "symbols_count": len(symbols),
+        "recorded_ha_states": len(trader.ha_states),
+        "tracked_positions": list(trader.positions.keys()),
+        "sample": sample_info,
+        "ha_states_snapshot": dict(list(trader.ha_states.items())[:10])
+    }

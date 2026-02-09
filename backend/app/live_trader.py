@@ -1,6 +1,11 @@
 """
 Live Trader
 Executes real trades on Bybit using the BASE strategy
+
+FIXES:
+- Cleaner is_new_flip: only responsibility is state tracking + flip detection
+- Trade execution is separate (execute_trade, no ha_state param needed)
+- Better error handling and logging
 """
 import json
 from datetime import datetime, timezone
@@ -14,7 +19,6 @@ from .config import LEVERAGE, DATA_DIR
 from .activity_logger import logger
 
 
-# Track last known HA state per symbol to detect NEW flips only
 FLIP_STATE_FILE = DATA_DIR / "live_flip_state.json"
 
 
@@ -39,22 +43,26 @@ class LiveTrader:
         self.ha_states: Dict[str, str] = self._load_flip_states()
         
         print(f"🔴 LiveTrader initialized | Size: ${trade_size_usd} | Max: {max_positions} | Leverage: {leverage}x")
+        print(f"   Loaded {len(self.ha_states)} recorded HA states from disk")
     
     def _load_flip_states(self) -> Dict[str, str]:
         """Load last known HA states from file."""
         if FLIP_STATE_FILE.exists():
             try:
                 with open(FLIP_STATE_FILE, 'r') as f:
-                    return json.load(f)
-            except:
-                pass
+                    data = json.load(f)
+                    # Ensure it's a flat dict of str -> str
+                    if isinstance(data, dict):
+                        return {k: v for k, v in data.items() if isinstance(v, str)}
+            except Exception as e:
+                print(f"⚠️ Failed to load flip states: {e}")
         return {}
     
     def _save_flip_states(self):
         """Save current HA states to file."""
         try:
             with open(FLIP_STATE_FILE, 'w') as f:
-                json.dump(self.ha_states, f)
+                json.dump(self.ha_states, f, indent=2)
         except Exception as e:
             print(f"⚠️ Failed to save flip states: {e}")
     
@@ -72,10 +80,17 @@ class LiveTrader:
     
     def is_new_flip(self, symbol: str, current_state: str) -> bool:
         """
-        Check if this is a NEW flip (not the current state when we started).
+        Check if this is a NEW flip for the given symbol.
         
-        On first run, we record the current state but DON'T trade.
-        Only trade when state CHANGES from recorded state.
+        On first run for a symbol, records the state but does NOT trade.
+        Only returns True when state CHANGES from the recorded state.
+        
+        Args:
+            symbol: Trading pair
+            current_state: Current HA state ("bullish" or "bearish")
+            
+        Returns:
+            True if a new flip occurred, False otherwise
         """
         prev_state = self.ha_states.get(symbol)
         
@@ -91,108 +106,24 @@ class LiveTrader:
             # State changed! This is a new flip
             self.ha_states[symbol] = current_state
             self._save_flip_states()
+            print(f"🔄 FLIP: {symbol} {prev_state} → {current_state}")
             return True
         
         return False
     
     def get_open_position_count(self) -> int:
         """Get number of open positions from Bybit."""
-        positions = self.client.get_positions()
-        return len(positions)
+        try:
+            positions = self.client.get_positions()
+            return len(positions)
+        except Exception as e:
+            print(f"⚠️ Error getting positions: {e}")
+            return 0
     
     def can_open_position(self) -> bool:
         """Check if we can open a new position."""
         count = self.get_open_position_count()
         return count < self.max_positions
-    
-    def execute_signal(self, signal: Signal, ha_state: str) -> Optional[str]:
-        """
-        Execute a live trade signal.
-        
-        Args:
-            signal: Trading signal from strategy
-            ha_state: Current HA state ("bullish" or "bearish")
-            
-        Returns:
-            Order ID if successful, None otherwise
-        """
-        if not self.enabled:
-            return None
-        
-        with self._lock:
-            # Check if this is a NEW flip
-            if not self.is_new_flip(signal.symbol, ha_state):
-                return None
-            
-            # Check position limit
-            if not self.can_open_position():
-                print(f"⚠️ Max positions ({self.max_positions}) reached, skipping {signal.symbol}")
-                return None
-            
-            # Check if already in position for this symbol
-            positions = self.client.get_positions(signal.symbol)
-            if positions:
-                print(f"⚠️ Already have position in {signal.symbol}, skipping")
-                return None
-            
-            # Set leverage
-            if not self.client.set_leverage(signal.symbol, self.leverage):
-                print(f"⚠️ Failed to set leverage for {signal.symbol}")
-                # Continue anyway, leverage might already be set
-            
-            # Calculate quantity
-            qty = self.client.calculate_qty(signal.symbol, self.trade_size_usd, self.leverage)
-            if not qty:
-                print(f"❌ Failed to calculate qty for {signal.symbol}")
-                return None
-            
-            # Place market order
-            side = "Buy" if signal.direction == "LONG" else "Sell"
-            order_id = self.client.place_market_order(signal.symbol, side, qty)
-            
-            if not order_id:
-                print(f"❌ Failed to place order for {signal.symbol}")
-                return None
-            
-            # Set initial stop loss (just the SL for now, we manage TPs ourselves)
-            self.client.set_trading_stop(
-                signal.symbol, 
-                side,
-                stop_loss=signal.stop_loss
-            )
-            
-            # Track position locally
-            self.positions[signal.symbol] = {
-                "order_id": order_id,
-                "symbol": signal.symbol,
-                "side": signal.direction,
-                "entry_price": signal.entry_price,
-                "stop_loss": signal.stop_loss,
-                "current_sl": signal.stop_loss,
-                "entry_time": datetime.now(timezone.utc).isoformat(),
-                "take_profits": [
-                    signal.take_profit_1, signal.take_profit_2, signal.take_profit_3,
-                    signal.take_profit_4, signal.take_profit_5, signal.take_profit_6,
-                    signal.take_profit_7, signal.take_profit_8, signal.take_profit_9,
-                    signal.take_profit_10
-                ],
-                "tp_hit": [False] * 10
-            }
-            
-            # Log the trade
-            logger.trade_opened(signal.symbol, signal.direction, signal.entry_price, qty)
-            logger.sl_set(signal.symbol, signal.stop_loss)
-            logger.tp_set(signal.symbol, {
-                1: signal.take_profit_1, 2: signal.take_profit_2, 3: signal.take_profit_3,
-                4: signal.take_profit_4, 5: signal.take_profit_5, 6: signal.take_profit_6,
-                7: signal.take_profit_7, 8: signal.take_profit_8, 9: signal.take_profit_9,
-                10: signal.take_profit_10
-            })
-            
-            print(f"🔴 LIVE TRADE: {signal.direction} {signal.symbol} | Qty: {qty} | Entry: {signal.entry_price:.4f}")
-            print(f"   SL: {signal.stop_loss:.4f} | TP10: {signal.take_profit_10:.4f}")
-            
-            return order_id
     
     def execute_trade(self, signal: Signal) -> Optional[str]:
         """
@@ -221,7 +152,7 @@ class LiveTrader:
             
             # Set leverage
             if not self.client.set_leverage(signal.symbol, self.leverage):
-                print(f"⚠️ Failed to set leverage for {signal.symbol}")
+                print(f"⚠️ Failed to set leverage for {signal.symbol} (may already be set)")
             
             # Calculate quantity
             qty = self.client.calculate_qty(signal.symbol, self.trade_size_usd, self.leverage)
@@ -285,7 +216,11 @@ class LiveTrader:
         if not self.enabled:
             return
         
-        bybit_positions = self.client.get_positions()
+        try:
+            bybit_positions = self.client.get_positions()
+        except Exception as e:
+            print(f"⚠️ Error fetching positions for update: {e}")
+            return
         
         for pos in bybit_positions:
             symbol = pos["symbol"]
@@ -304,7 +239,7 @@ class LiveTrader:
             tp_hit = local_pos["tp_hit"]
             
             # Check TPs from highest to lowest
-            for i in range(9, -1, -1):  # 9 to 0 (TP10 to TP1)
+            for i in range(9, -1, -1):
                 if tp_hit[i]:
                     continue
                 
@@ -331,11 +266,9 @@ class LiveTrader:
                         new_sl = tps[i - 1] if i > 0 else local_pos["entry_price"]
                         local_pos["current_sl"] = new_sl
                         
-                        # Log the TP hit and SL update
                         logger.tp_hit(symbol, tp_num, tp_price, new_sl)
                         logger.sl_updated(symbol, old_sl, new_sl, f"TP{tp_num} hit")
                         
-                        # Update on Bybit
                         self.client.set_trading_stop(
                             symbol,
                             "Buy" if is_long else "Sell",
