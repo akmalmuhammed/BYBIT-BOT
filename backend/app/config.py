@@ -24,7 +24,7 @@ for d in [CANDLES_DIR, TRADES_DIR, POSITIONS_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # Trading settings
-TOP_COINS_COUNT = 20  # Top 20 trending by volume
+TOP_COINS_COUNT = 15  # Top 15 trending by volume
 SCAN_INTERVAL_MINUTES = 5
 
 # Timeframes
