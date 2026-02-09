@@ -11,6 +11,7 @@ import threading
 from .bybit_client import get_client, BybitClient
 from .strategy import Signal
 from .config import LEVERAGE, DATA_DIR
+from .activity_logger import logger
 
 
 # Track last known HA state per symbol to detect NEW flips only
@@ -60,11 +61,13 @@ class LiveTrader:
     def start(self):
         """Enable live trading."""
         self.enabled = True
+        logger.live_started()
         print("🟢 LIVE TRADING ENABLED")
     
     def stop(self):
         """Disable live trading."""
         self.enabled = False
+        logger.live_stopped()
         print("🔴 LIVE TRADING DISABLED")
     
     def is_new_flip(self, symbol: str, current_state: str) -> bool:
@@ -80,6 +83,7 @@ class LiveTrader:
             # First time seeing this symbol - record state, don't trade
             self.ha_states[symbol] = current_state
             self._save_flip_states()
+            logger.flip_recorded(symbol, current_state)
             print(f"📝 Recorded initial state for {symbol}: {current_state} (will trade on NEXT flip)")
             return False
         
@@ -175,6 +179,16 @@ class LiveTrader:
                 "tp_hit": [False] * 10
             }
             
+            # Log the trade
+            logger.trade_opened(signal.symbol, signal.direction, signal.entry_price, qty)
+            logger.sl_set(signal.symbol, signal.stop_loss)
+            logger.tp_set(signal.symbol, {
+                1: signal.take_profit_1, 2: signal.take_profit_2, 3: signal.take_profit_3,
+                4: signal.take_profit_4, 5: signal.take_profit_5, 6: signal.take_profit_6,
+                7: signal.take_profit_7, 8: signal.take_profit_8, 9: signal.take_profit_9,
+                10: signal.take_profit_10
+            })
+            
             print(f"🔴 LIVE TRADE: {signal.direction} {signal.symbol} | Qty: {qty} | Entry: {signal.entry_price:.4f}")
             print(f"   SL: {signal.stop_loss:.4f} | TP10: {signal.take_profit_10:.4f}")
             
@@ -220,14 +234,23 @@ class LiveTrader:
                     
                     if tp_num == 10:
                         # TP10 - Close position
+                        pnl = ((current_price - local_pos["entry_price"]) / local_pos["entry_price"]) * 100 * self.leverage
+                        if not is_long:
+                            pnl = -pnl
+                        logger.tp10_close(symbol, current_price, pnl)
                         print(f"🎯🎯 TP10 HIT! Closing {symbol} @ {current_price:.4f}")
                         self.client.close_position(symbol, local_pos["side"])
                         del self.positions[symbol]
                         return
                     else:
                         # Update trailing SL to previous TP
+                        old_sl = local_pos["current_sl"]
                         new_sl = tps[i - 1] if i > 0 else local_pos["entry_price"]
                         local_pos["current_sl"] = new_sl
+                        
+                        # Log the TP hit and SL update
+                        logger.tp_hit(symbol, tp_num, tp_price, new_sl)
+                        logger.sl_updated(symbol, old_sl, new_sl, f"TP{tp_num} hit")
                         
                         # Update on Bybit
                         self.client.set_trading_stop(
@@ -245,12 +268,14 @@ class LiveTrader:
         print("🚨 EMERGENCY: Closing all positions...")
         
         positions = self.client.get_positions()
+        count = len(positions)
         for pos in positions:
             symbol = pos["symbol"]
             side = "LONG" if pos["side"] == "Buy" else "SHORT"
             self.client.close_position(symbol, side)
         
         self.positions.clear()
+        logger.emergency_close(count)
         print("✅ All positions closed")
     
     def get_status(self) -> dict:

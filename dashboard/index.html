@@ -1,428 +1,413 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🔴 Bybit Live Trading Bot</title>
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body {
-        font-family: "Segoe UI", system-ui, sans-serif;
-        background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
-        color: #e0e0e0;
-        min-height: 100vh;
-        padding: 20px;
-      }
-      .container {
-        max-width: 1200px;
-        margin: 0 auto;
-      }
-
-      /* Header */
-      header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px;
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 16px;
-        margin-bottom: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-      }
-      .logo {
-        font-size: 1.5rem;
-        font-weight: bold;
-      }
-      .status-badge {
-        padding: 8px 16px;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9rem;
-      }
-      .status-live {
-        background: #00c853;
-        color: #000;
-        animation: pulse 2s infinite;
-      }
-      .status-stopped {
-        background: #ff5252;
-        color: #fff;
-      }
-      @keyframes pulse {
-        0%,
-        100% {
-          box-shadow: 0 0 0 0 rgba(0, 200, 83, 0.5);
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
         }
-        50% {
-          box-shadow: 0 0 0 10px rgba(0, 200, 83, 0);
+        .container { max-width: 1400px; margin: 0 auto; }
+        
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
         }
-      }
+        .logo { font-size: 1.5rem; font-weight: bold; }
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .status-live { background: #00c853; color: #000; animation: pulse 2s infinite; }
+        .status-stopped { background: #ff5252; color: #fff; }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(0,200,83,0.5); }
+            50% { box-shadow: 0 0 0 10px rgba(0,200,83,0); }
+        }
 
-      /* Stats Grid */
-      .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 16px;
-        margin-bottom: 20px;
-      }
-      .stat-card {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
-        padding: 20px;
-        text-align: center;
-      }
-      .stat-value {
-        font-size: 2rem;
-        font-weight: bold;
-        color: #00c853;
-      }
-      .stat-label {
-        font-size: 0.9rem;
-        color: #888;
-        margin-top: 4px;
-      }
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #00c853;
+        }
+        .stat-label { font-size: 0.8rem; color: #888; margin-top: 4px; }
 
-      /* Controls */
-      .controls {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 20px;
-        flex-wrap: wrap;
-      }
-      button {
-        padding: 12px 24px;
-        border: none;
-        border-radius: 8px;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      .btn-start {
-        background: #00c853;
-        color: #000;
-      }
-      .btn-start:hover {
-        background: #00e676;
-        transform: scale(1.02);
-      }
-      .btn-stop {
-        background: #ff5252;
-        color: #fff;
-      }
-      .btn-stop:hover {
-        background: #ff1744;
-      }
-      .btn-emergency {
-        background: #ff9100;
-        color: #000;
-      }
-      .btn-emergency:hover {
-        background: #ffab40;
-      }
-      .btn-refresh {
-        background: rgba(255, 255, 255, 0.1);
-        color: #fff;
-      }
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-start { background: #00c853; color: #000; }
+        .btn-start:hover { background: #00e676; transform: scale(1.02); }
+        .btn-stop { background: #ff5252; color: #fff; }
+        .btn-emergency { background: #ff9100; color: #000; }
+        .btn-refresh { background: rgba(255,255,255,0.1); color: #fff; }
 
-      /* Positions Table */
-      .section {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 20px;
-      }
-      .section-title {
-        font-size: 1.2rem;
-        margin-bottom: 16px;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-      th,
-      td {
-        padding: 12px;
-        text-align: left;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      }
-      th {
-        color: #888;
-        font-weight: 500;
-      }
-      .long {
-        color: #00c853;
-      }
-      .short {
-        color: #ff5252;
-      }
-      .pnl-positive {
-        color: #00c853;
-        font-weight: bold;
-      }
-      .pnl-negative {
-        color: #ff5252;
-        font-weight: bold;
-      }
+        /* Layout */
+        .grid-2col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .grid-2col { grid-template-columns: 1fr; }
+        }
 
-      /* Activity Log */
-      .log {
-        max-height: 300px;
-        overflow-y: auto;
-        font-family: "Consolas", monospace;
-        font-size: 0.85rem;
-        background: #0a0a15;
-        padding: 12px;
-        border-radius: 8px;
-      }
-      .log-entry {
-        padding: 4px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      }
-      .log-time {
-        color: #666;
-      }
-      .log-trade {
-        color: #00c853;
-      }
-      .log-tp {
-        color: #ffd700;
-      }
-      .log-sl {
-        color: #ff5252;
-      }
+        /* Sections */
+        .section {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .section-title { 
+            font-size: 1.1rem; 
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
 
-      /* Empty State */
-      .empty {
-        text-align: center;
-        color: #666;
-        padding: 40px;
-      }
+        /* Positions Table */
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        th { color: #888; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
+        .long { color: #00c853; font-weight: 600; }
+        .short { color: #ff5252; font-weight: 600; }
+        .pnl-positive { color: #00c853; font-weight: bold; }
+        .pnl-negative { color: #ff5252; font-weight: bold; }
+
+        /* Activity Log */
+        .log {
+            max-height: 500px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.8rem;
+            background: #0a0a15;
+            border-radius: 8px;
+        }
+        .log-entry {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+        }
+        .log-entry:hover { background: rgba(255,255,255,0.02); }
+        .log-time { color: #666; font-size: 0.7rem; white-space: nowrap; }
+        .log-type {
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+            min-width: 70px;
+            text-align: center;
+        }
+        .log-symbol { color: #64b5f6; font-weight: 600; min-width: 80px; }
+        .log-message { flex: 1; }
+
+        /* Log type colors */
+        .type-TRADE_OPEN { background: #00c853; color: #000; }
+        .type-TRADE_CLOSE { background: #ff5252; color: #fff; }
+        .type-SL_SET { background: #ff9100; color: #000; }
+        .type-SL_UPDATED { background: #ffab40; color: #000; }
+        .type-SL_HIT { background: #d50000; color: #fff; }
+        .type-TP_SET { background: #64b5f6; color: #000; }
+        .type-TP_HIT { background: #ffd700; color: #000; }
+        .type-TP10_CLOSE { background: #00e676; color: #000; }
+        .type-SIGNAL { background: #9c27b0; color: #fff; }
+        .type-FLIP_RECORD { background: #607d8b; color: #fff; }
+        .type-SYSTEM { background: #2196f3; color: #fff; }
+        .type-EMERGENCY { background: #d50000; color: #fff; }
+        .type-SCAN { background: #455a64; color: #fff; }
+
+        /* Filter buttons */
+        .filters {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            padding: 4px 10px;
+            font-size: 0.7rem;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            cursor: pointer;
+            border: none;
+        }
+        .filter-btn.active { background: #00c853; color: #000; }
+
+        /* Empty State */
+        .empty { text-align: center; color: #666; padding: 30px; }
     </style>
-  </head>
-  <body>
+</head>
+<body>
     <div class="container">
-      <header>
-        <div class="logo">🤖 Bybit Live Trading Bot</div>
-        <div id="status-badge" class="status-badge status-stopped">STOPPED</div>
-      </header>
+        <header>
+            <div class="logo">🤖 Bybit Live Trading Bot</div>
+            <div id="status-badge" class="status-badge status-stopped">STOPPED</div>
+        </header>
 
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div id="balance" class="stat-value">$0.00</div>
-          <div class="stat-label">Wallet Balance (USDT)</div>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div id="balance" class="stat-value">$0.00</div>
+                <div class="stat-label">Wallet (USDT)</div>
+            </div>
+            <div class="stat-card">
+                <div id="positions" class="stat-value">0</div>
+                <div class="stat-label">Positions</div>
+            </div>
+            <div class="stat-card">
+                <div id="trade-size" class="stat-value">$10</div>
+                <div class="stat-label">Trade Size</div>
+            </div>
+            <div class="stat-card">
+                <div id="max-pos" class="stat-value">8</div>
+                <div class="stat-label">Max Pos</div>
+            </div>
+            <div class="stat-card">
+                <div id="symbols" class="stat-value">15</div>
+                <div class="stat-label">Symbols</div>
+            </div>
         </div>
-        <div class="stat-card">
-          <div id="positions" class="stat-value">0</div>
-          <div class="stat-label">Open Positions</div>
-        </div>
-        <div class="stat-card">
-          <div id="trade-size" class="stat-value">$10</div>
-          <div class="stat-label">Trade Size</div>
-        </div>
-        <div class="stat-card">
-          <div id="max-pos" class="stat-value">8</div>
-          <div class="stat-label">Max Positions</div>
-        </div>
-      </div>
 
-      <div class="controls">
-        <button class="btn-start" onclick="startTrading()">
-          ▶️ Start Live
-        </button>
-        <button class="btn-stop" onclick="stopTrading()">⏹️ Stop</button>
-        <button class="btn-emergency" onclick="emergencyClose()">
-          🚨 Close All
-        </button>
-        <button class="btn-refresh" onclick="refreshData()">🔄 Refresh</button>
-      </div>
-
-      <div class="section">
-        <div class="section-title">📈 Live Positions</div>
-        <div id="positions-table">
-          <p class="empty">No open positions</p>
+        <div class="controls">
+            <button class="btn-start" onclick="startTrading()">▶️ Start Live</button>
+            <button class="btn-stop" onclick="stopTrading()">⏹️ Stop</button>
+            <button class="btn-emergency" onclick="emergencyClose()">🚨 Close All</button>
+            <button class="btn-refresh" onclick="refreshData()">🔄 Refresh</button>
         </div>
-      </div>
 
-      <div class="section">
-        <div class="section-title">📋 Activity Log</div>
-        <div id="activity-log" class="log">
-          <div class="log-entry">
-            <span class="log-time">[--:--:--]</span> Dashboard loaded. Waiting
-            for updates...
-          </div>
+        <div class="grid-2col">
+            <div class="section">
+                <div class="section-title">📈 Open Positions</div>
+                <div id="positions-table">
+                    <p class="empty">No open positions</p>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">📋 Activity Log</div>
+                <div class="filters">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="TRADE_OPEN">Trades</button>
+                    <button class="filter-btn" data-filter="TP_HIT">TP Hits</button>
+                    <button class="filter-btn" data-filter="SL">SL Events</button>
+                    <button class="filter-btn" data-filter="SYSTEM">System</button>
+                </div>
+                <div id="activity-log" class="log">
+                    <p class="empty">Loading logs...</p>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
 
     <script>
-      const API_BASE = "/api";
-      let lastPositions = [];
+        const API_BASE = '/api';
+        let currentFilter = 'all';
 
-      // Add log entry
-      function addLog(message, type = "") {
-        const log = document.getElementById("activity-log");
-        const time = new Date().toLocaleTimeString();
-        const entry = document.createElement("div");
-        entry.className = "log-entry";
-        entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="${type}">${message}</span>`;
-        log.insertBefore(entry, log.firstChild);
-        if (log.children.length > 50) log.removeChild(log.lastChild);
-      }
-
-      // Fetch status
-      async function fetchStatus() {
-        try {
-          const res = await fetch(`${API_BASE}/live/status`);
-          const data = await res.json();
-
-          // Update status badge
-          const badge = document.getElementById("status-badge");
-          if (data.trading?.enabled) {
-            badge.textContent = "🟢 LIVE";
-            badge.className = "status-badge status-live";
-          } else {
-            badge.textContent = "🔴 STOPPED";
-            badge.className = "status-badge status-stopped";
-          }
-
-          // Update stats
-          document.getElementById("balance").textContent =
-            `$${(data.wallet?.balance_usdt || 0).toFixed(2)}`;
-          document.getElementById("positions").textContent =
-            data.bybit_positions || 0;
-          document.getElementById("trade-size").textContent =
-            `$${data.trading?.trade_size_usd || 10}`;
-          document.getElementById("max-pos").textContent =
-            data.trading?.max_positions || 8;
-        } catch (e) {
-          console.error("Status fetch failed:", e);
+        // Format timestamp
+        function formatTime(isoString) {
+            const d = new Date(isoString);
+            return d.toLocaleTimeString('en-US', { hour12: false });
         }
-      }
 
-      // Fetch positions
-      async function fetchPositions() {
-        try {
-          const res = await fetch(`${API_BASE}/positions`);
-          const positions = await res.json();
+        // Fetch status
+        async function fetchStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/live/status`);
+                const data = await res.json();
+                
+                const badge = document.getElementById('status-badge');
+                if (data.trading?.enabled) {
+                    badge.textContent = '🟢 LIVE';
+                    badge.className = 'status-badge status-live';
+                } else {
+                    badge.textContent = '🔴 STOPPED';
+                    badge.className = 'status-badge status-stopped';
+                }
 
-          const container = document.getElementById("positions-table");
+                document.getElementById('balance').textContent = `$${(data.wallet?.balance_usdt || 0).toFixed(2)}`;
+                document.getElementById('positions').textContent = data.bybit_positions || 0;
+                document.getElementById('trade-size').textContent = `$${data.trading?.trade_size_usd || 10}`;
+                document.getElementById('max-pos').textContent = data.trading?.max_positions || 8;
+                document.getElementById('symbols').textContent = data.trading?.recorded_states || 15;
 
-          if (!positions || positions.length === 0) {
-            container.innerHTML = '<p class="empty">No open positions</p>';
-            return;
-          }
+            } catch (e) {
+                console.error('Status fetch failed:', e);
+            }
+        }
 
-          let html = `<table>
+        // Fetch positions
+        async function fetchPositions() {
+            try {
+                const res = await fetch(`${API_BASE}/positions`);
+                const positions = await res.json();
+                
+                const container = document.getElementById('positions-table');
+                
+                if (!positions || positions.length === 0) {
+                    container.innerHTML = '<p class="empty">No open positions</p>';
+                    return;
+                }
+
+                let html = `<table>
                     <tr>
                         <th>Symbol</th>
                         <th>Side</th>
                         <th>Entry</th>
-                        <th>Current</th>
                         <th>PnL</th>
-                        <th>TPs Hit</th>
-                        <th>Current SL</th>
+                        <th>TPs</th>
+                        <th>SL</th>
                     </tr>`;
 
-          positions.forEach((p) => {
-            const pnlClass =
-              (p.unrealized_pnl_pct || 0) >= 0
-                ? "pnl-positive"
-                : "pnl-negative";
-            const sideClass = p.side === "LONG" ? "long" : "short";
+                positions.forEach(p => {
+                    const pnlClass = (p.unrealized_pnl_pct || 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
+                    const sideClass = p.side === 'LONG' ? 'long' : 'short';
+                    
+                    let tpsHit = 0;
+                    for (let i = 1; i <= 10; i++) {
+                        if (p[`tp${i}_hit`]) tpsHit++;
+                    }
 
-            // Count TPs hit
-            let tpsHit = 0;
-            for (let i = 1; i <= 10; i++) {
-              if (p[`tp${i}_hit`]) tpsHit++;
-            }
-
-            html += `<tr>
+                    html += `<tr>
                         <td><strong>${p.symbol}</strong></td>
                         <td class="${sideClass}">${p.side}</td>
-                        <td>${p.entry_price?.toFixed(4) || "-"}</td>
-                        <td>${p.current_price?.toFixed(4) || "-"}</td>
-                        <td class="${pnlClass}">${(p.unrealized_pnl_pct || 0).toFixed(2)}%</td>
+                        <td>${p.entry_price?.toFixed(2) || '-'}</td>
+                        <td class="${pnlClass}">${(p.unrealized_pnl_pct || 0).toFixed(1)}%</td>
                         <td>${tpsHit}/10</td>
-                        <td>${p.current_sl?.toFixed(4) || "-"}</td>
+                        <td>${p.current_sl?.toFixed(2) || '-'}</td>
                     </tr>`;
-          });
+                });
 
-          html += "</table>";
-          container.innerHTML = html;
+                html += '</table>';
+                container.innerHTML = html;
 
-          // Check for new positions or TP hits
-          if (JSON.stringify(positions) !== JSON.stringify(lastPositions)) {
-            positions.forEach((p) => {
-              const old = lastPositions.find((op) => op.symbol === p.symbol);
-              if (!old) {
-                addLog(`🆕 New position: ${p.side} ${p.symbol}`, "log-trade");
-              } else {
-                for (let i = 1; i <= 10; i++) {
-                  if (p[`tp${i}_hit`] && !old[`tp${i}_hit`]) {
-                    addLog(`🎯 TP${i} hit on ${p.symbol}!`, "log-tp");
-                  }
+            } catch (e) {
+                console.error('Positions fetch failed:', e);
+            }
+        }
+
+        // Fetch logs
+        async function fetchLogs() {
+            try {
+                const res = await fetch(`${API_BASE}/logs?limit=100`);
+                const data = await res.json();
+                
+                const container = document.getElementById('activity-log');
+                const logs = data.logs || [];
+                
+                if (logs.length === 0) {
+                    container.innerHTML = '<p class="empty">No activity yet</p>';
+                    return;
                 }
-              }
+
+                let html = '';
+                logs.forEach(log => {
+                    // Apply filter
+                    if (currentFilter !== 'all') {
+                        if (currentFilter === 'SL') {
+                            if (!log.type.startsWith('SL')) return;
+                        } else if (!log.type.includes(currentFilter)) {
+                            return;
+                        }
+                    }
+
+                    const typeClass = `type-${log.type}`;
+                    html += `<div class="log-entry">
+                        <span class="log-time">${formatTime(log.timestamp)}</span>
+                        <span class="log-type ${typeClass}">${log.type.replace('_', ' ')}</span>
+                        <span class="log-symbol">${log.symbol}</span>
+                        <span class="log-message">${log.message}</span>
+                    </div>`;
+                });
+
+                container.innerHTML = html || '<p class="empty">No matching logs</p>';
+
+            } catch (e) {
+                console.error('Logs fetch failed:', e);
+            }
+        }
+
+        // Filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.dataset.filter;
+                fetchLogs();
             });
-            lastPositions = positions;
-          }
-        } catch (e) {
-          console.error("Positions fetch failed:", e);
+        });
+
+        // Controls
+        async function startTrading() {
+            await fetch(`${API_BASE}/live/start`, { method: 'POST' });
+            refreshData();
         }
-      }
 
-      // Start trading
-      async function startTrading() {
-        try {
-          const res = await fetch(`${API_BASE}/live/start`, { method: "POST" });
-          const data = await res.json();
-          addLog("🟢 Live trading STARTED", "log-trade");
-          refreshData();
-        } catch (e) {
-          addLog("❌ Failed to start trading", "log-sl");
+        async function stopTrading() {
+            await fetch(`${API_BASE}/live/stop`, { method: 'POST' });
+            refreshData();
         }
-      }
 
-      // Stop trading
-      async function stopTrading() {
-        try {
-          await fetch(`${API_BASE}/live/stop`, { method: "POST" });
-          addLog("🔴 Live trading STOPPED", "log-sl");
-          refreshData();
-        } catch (e) {
-          addLog("❌ Failed to stop trading", "log-sl");
+        async function emergencyClose() {
+            if (!confirm('⚠️ Close ALL positions immediately?')) return;
+            await fetch(`${API_BASE}/live/emergency-close`, { method: 'POST' });
+            refreshData();
         }
-      }
 
-      // Emergency close
-      async function emergencyClose() {
-        if (!confirm("⚠️ Close ALL positions immediately?")) return;
-        try {
-          await fetch(`${API_BASE}/live/emergency-close`, { method: "POST" });
-          addLog("🚨 EMERGENCY CLOSE - All positions closed", "log-sl");
-          refreshData();
-        } catch (e) {
-          addLog("❌ Failed to close positions", "log-sl");
+        function refreshData() {
+            fetchStatus();
+            fetchPositions();
+            fetchLogs();
         }
-      }
 
-      // Refresh all data
-      function refreshData() {
-        fetchStatus();
-        fetchPositions();
-      }
-
-      // Auto-refresh every 30 seconds
-      setInterval(refreshData, 30000);
-      refreshData();
-      addLog("Dashboard connected to bot");
+        // Auto-refresh
+        setInterval(refreshData, 15000);
+        refreshData();
     </script>
-  </body>
+</body>
 </html>

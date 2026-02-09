@@ -426,3 +426,12 @@ async def get_live_balance():
             "error": str(e),
             "status": "error"
         }
+
+
+@router.get("/logs")
+async def get_activity_logs(limit: int = 100, event_type: str = None):
+    """Get activity logs for dashboard."""
+    from ..activity_logger import logger
+    
+    logs = logger.get_logs(limit=limit, event_type=event_type)
+    return {"logs": logs, "count": len(logs)}
