@@ -236,7 +236,7 @@ class BaseFlipStrategy(BaseStrategy):
         super().__init__(
             strategy_id="base",
             cooldown_minutes=60,
-            atr_timeframe="5"
+            atr_timeframe="15"
         )
     
     def check_entry_filters(self, symbol, direction, df_5m, df_15m=None, df_1h=None):
