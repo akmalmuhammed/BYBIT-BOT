@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Environment files (IMPORTANT: never commit API keys!)
+.env
+backend/.env
+
+# Data files (positions, trades)
+backend/data/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+*.egg-info/
+dist/
+build/
+.next/
+
+# Logs
+*.log
