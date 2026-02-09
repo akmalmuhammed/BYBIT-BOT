@@ -533,3 +533,48 @@ async def get_activity_logs(limit: int = 100, event_type: str = None):
     
     logs = logger.get_logs(limit=limit, event_type=event_type)
     return {"logs": logs, "count": len(logs)}
+
+
+@router.get("/ha-status")
+async def get_ha_status():
+    """Get current HA status for all monitored symbols."""
+    from ..live_trader import get_live_trader
+    from ..indicators import calculate_heikin_ashi, get_ha_trend
+    from datetime import datetime, timezone
+    
+    trader = get_live_trader()
+    symbols = scanner.get_top_futures_symbols()
+    
+    ha_status = []
+    
+    for symbol in symbols[:20]:  # Top 20 symbols
+        try:
+            # Get 4H candles
+            df = scanner.load_candles(symbol, "240")
+            if df.empty:
+                continue
+            
+            # Calculate HA
+            df_ha = calculate_heikin_ashi(df.copy())
+            current_trend = get_ha_trend(df_ha)
+            
+            # Get last candle time
+            last_candle_time = df.iloc[-1]['timestamp']
+            if hasattr(last_candle_time, 'isoformat'):
+                last_candle_time = last_candle_time.isoformat()
+            
+            # Get recorded state from live trader
+            recorded_state = trader.ha_states.get(symbol, {}).get("state", "unknown")
+            
+            ha_status.append({
+                "symbol": symbol,
+                "current_trend": current_trend,
+                "recorded_state": recorded_state,
+                "last_update": last_candle_time,
+                "is_flip_ready": current_trend != recorded_state if recorded_state != "unknown" else False
+            })
+        except Exception as e:
+            continue
+    
+    return {"ha_status": ha_status, "count": len(ha_status)}
+

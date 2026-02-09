@@ -248,11 +248,20 @@
                     <button class="filter-btn" data-filter="TRADE_OPEN">Trades</button>
                     <button class="filter-btn" data-filter="TP_HIT">TP Hits</button>
                     <button class="filter-btn" data-filter="SL">SL Events</button>
+                    <button class="filter-btn" data-filter="SCAN">Fetch</button>
                     <button class="filter-btn" data-filter="SYSTEM">System</button>
                 </div>
                 <div id="activity-log" class="log">
                     <p class="empty">Loading logs...</p>
                 </div>
+            </div>
+        </div>
+
+        <!-- HA Status Section -->
+        <div class="section">
+            <div class="section-title">📊 Heikin Ashi Status (4H)</div>
+            <div id="ha-status-table">
+                <p class="empty">Loading HA status...</p>
             </div>
         </div>
     </div>
@@ -426,10 +435,57 @@
             refreshData();
         }
 
+        // Fetch HA Status
+        async function fetchHAStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/ha-status`);
+                const data = await res.json();
+                
+                const container = document.getElementById('ha-status-table');
+                const haList = data.ha_status || [];
+                
+                if (haList.length === 0) {
+                    container.innerHTML = '<p class="empty">No HA data available</p>';
+                    return;
+                }
+
+                let html = `<table>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Current Trend</th>
+                        <th>Recorded State</th>
+                        <th>Status</th>
+                        <th>Last Update</th>
+                    </tr>`;
+
+                haList.forEach(ha => {
+                    const trendClass = ha.current_trend === 'bullish' ? 'long' : 'short';
+                    const recordedClass = ha.recorded_state === 'bullish' ? 'long' : 'short';
+                    const statusText = ha.is_flip_ready ? '🔄 FLIP READY' : '✓ Tracking';
+                    const statusClass = ha.is_flip_ready ? 'pnl-positive' : '';
+                    
+                    html += `<tr>
+                        <td><strong>${ha.symbol}</strong></td>
+                        <td class="${trendClass}">${ha.current_trend.toUpperCase()}</td>
+                        <td class="${recordedClass}">${ha.recorded_state.toUpperCase()}</td>
+                        <td class="${statusClass}">${statusText}</td>
+                        <td>${formatTime(ha.last_update)}</td>
+                    </tr>`;
+                });
+
+                html += '</table>';
+                container.innerHTML = html;
+
+            } catch (e) {
+                console.error('HA status fetch failed:', e);
+            }
+        }
+
         function refreshData() {
             fetchStatus();
             fetchPositions();
             fetchLogs();
+            fetchHAStatus();
         }
 
         // Auto-refresh
@@ -438,3 +494,4 @@
     </script>
 </body>
 </html>
+
