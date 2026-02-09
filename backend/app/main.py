@@ -181,6 +181,7 @@ async def run_scan_cycle():
     The triple try/except ensures the scheduler is bulletproof.
     """
     global scan_heartbeat
+    from .activity_logger import logger
     
     scan_heartbeat["is_scanning"] = True
     scan_heartbeat["last_scan_start"] = get_current_time().isoformat()
@@ -188,6 +189,9 @@ async def run_scan_cycle():
     print(f"\n{'='*50}")
     print(f"🔍 Scan #{scan_heartbeat['scan_count'] + 1} at {scan_heartbeat['last_scan_start']}")
     print(f"{'='*50}")
+    
+    # Log to dashboard
+    logger.scan_started(15)  # Approx number
     
     start_time = time.time()
     
@@ -211,6 +215,9 @@ async def run_scan_cycle():
         scanner._last_scan_duration = duration
         
         print(f"\n✅ Scan complete in {duration:.1f}s | {stats['symbols']} symbols | {stats['flips']} flips | {stats['signals']} signals | {stats['errors']} errors")
+        
+        # Log completion
+        logger._add("SCAN", "SYSTEM", f"✅ Scan complete in {duration:.1f}s", stats)
         
     except asyncio.TimeoutError:
         duration = time.time() - start_time

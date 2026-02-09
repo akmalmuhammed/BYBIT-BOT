@@ -548,10 +548,23 @@ async def get_ha_status():
             last_completed = df_ha.iloc[-2]
             current_trend = 'bullish' if last_completed['HA_close'] > last_completed['HA_open'] else 'bearish'
             
-            last_candle_time = df.iloc[-2]['timestamp']
-            if hasattr(last_candle_time, 'isoformat'):
-                last_candle_time = last_candle_time.isoformat()
-            
+            # Use file modification time if available to show "Live" status
+            import os
+            try:
+                # Get the modification time of the candle file
+                file_path = scanner.get_candle_path(symbol, "240")
+                if file_path.exists():
+                    mtime = os.path.getmtime(file_path)
+                    last_update_ts = datetime.fromtimestamp(mtime, tz=timezone(timedelta(hours=3)))
+                    last_candle_time = last_update_ts.isoformat()
+                else:
+                    # Fallback to candle time
+                    if hasattr(last_candle_time, 'isoformat'):
+                        last_candle_time = last_candle_time.isoformat()
+            except:
+                if hasattr(last_candle_time, 'isoformat'):
+                    last_candle_time = last_candle_time.isoformat()
+
             # FIX: ha_states is Dict[str, str], not nested dict
             recorded_state = trader.ha_states.get(symbol, "unknown")
             
@@ -595,6 +608,39 @@ async def get_heartbeat():
         hb["healthy"] = False
     
     return hb
+
+
+@router.get("/fetch/status")
+async def get_fetch_status():
+    """
+    Legacy endpoint for dashboard status.
+    Maps internal heartbeat to expected format.
+    """
+    from ..main import scan_heartbeat
+    from datetime import datetime, timedelta
+    
+    hb = scan_heartbeat
+    now = get_current_time()
+    
+    # Calculate next scan time
+    next_scan_in = 0
+    if hb.get("last_scan_start"):
+        try:
+            last_start = datetime.fromisoformat(hb["last_scan_start"])
+            next_run = last_start + timedelta(minutes=5)
+            diff = (next_run - now).total_seconds()
+            next_scan_in = max(0, diff)
+        except:
+            pass
+            
+    return {
+        "last_scan_time": hb.get("last_scan_end"),
+        "next_scan_in_seconds": next_scan_in,
+        "scan_duration_seconds": hb.get("last_scan_duration", 0),
+        "errors": 1 if hb.get("last_error") else 0,
+        "is_scanning": hb.get("is_scanning", False),
+        "last_error": hb.get("last_error")
+    }
 
 
 @router.get("/debug/scan-info")
