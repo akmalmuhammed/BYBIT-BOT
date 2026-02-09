@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict
-from .config import DATA_DIR
+from .config import DATA_DIR, get_current_time
 
 LOGS_FILE = DATA_DIR / "activity_logs.json"
 MAX_LOGS = 500
@@ -41,7 +41,7 @@ class ActivityLogger:
     def _add(self, event_type: str, symbol: str, message: str, data: Dict = None):
         """Add a log entry."""
         entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": get_current_time().isoformat(),
             "type": event_type,
             "symbol": symbol,
             "message": message,

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
 
-from .config import TRADES_DIR, POSITIONS_DIR, DATA_DIR, STARTING_CAPITAL, TRADE_SIZE, MAX_CONCURRENT_TRADES
+from .config import TRADES_DIR, POSITIONS_DIR, DATA_DIR, STARTING_CAPITAL, TRADE_SIZE, MAX_CONCURRENT_TRADES, get_current_time
 
 
 class Side(str, Enum):
@@ -149,7 +149,7 @@ class Storage:
                 "total_pnl_usd": 0.0,
                 "next_trade_size": TRADE_SIZE,
                 "max_trades": MAX_CONCURRENT_TRADES,
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": get_current_time().isoformat()
             })
     
     def _read_json(self, filepath: Path) -> Dict:
@@ -189,7 +189,7 @@ class Storage:
             trades.append(trade.to_dict())
         
         data["trades"] = trades
-        data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        data["updated_at"] = get_current_time().isoformat()
         self._write_json(self.trades_file, data)
     
     def get_trades(self, 
@@ -236,7 +236,7 @@ class Storage:
         
         positions.append(position.to_dict())
         data["positions"] = positions
-        data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        data["updated_at"] = get_current_time().isoformat()
         self._write_json(self.positions_file, data)
     
     def get_positions(self, strategy_id: Optional[str] = None) -> List[Position]:
@@ -264,7 +264,7 @@ class Storage:
         ]
         
         data["positions"] = positions
-        data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        data["updated_at"] = get_current_time().isoformat()
         self._write_json(self.positions_file, data)
     
     # ============ PERFORMANCE ============
@@ -294,7 +294,7 @@ class Storage:
             "total_pnl_pct": round(total_pnl, 2),
             "avg_win_pct": round(avg_win, 2),
             "avg_loss_pct": round(avg_loss, 2),
-            "updated_at": datetime.now(timezone.utc).isoformat()
+            "updated_at": get_current_time().isoformat()
         }
         
         self._write_json(self.performance_file, data)
@@ -355,7 +355,7 @@ class Storage:
         new_trade_size = max(10.0, min(new_trade_size, account["current_balance"]))
         account["next_trade_size"] = round(new_trade_size, 2)
         
-        account["updated_at"] = datetime.now(timezone.utc).isoformat()
+        account["updated_at"] = get_current_time().isoformat()
         self._write_json(self.account_file, account)
         
         print(f"💰 Balance: ${account['current_balance']:.2f} | Next trade: ${account['next_trade_size']:.2f}")

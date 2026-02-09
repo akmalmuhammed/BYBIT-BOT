@@ -19,7 +19,7 @@ from .indicators import (
     calculate_rsi, calculate_ema, calculate_atr, calculate_vwap,
     add_all_indicators
 )
-from .config import DEFAULT_SL_PERCENT, ATR_PERIOD, RSI_PERIOD, EMA_PERIOD
+from .config import DEFAULT_SL_PERCENT, ATR_PERIOD, RSI_PERIOD, EMA_PERIOD, get_current_time
 
 
 @dataclass
@@ -71,12 +71,12 @@ class BaseStrategy(ABC):
         if symbol not in self._last_entry:
             return False
         
-        elapsed = datetime.now(timezone.utc) - self._last_entry[symbol]
+        elapsed = get_current_time() - self._last_entry[symbol]
         return elapsed.total_seconds() < (self.cooldown_minutes * 60)
     
     def set_entry_time(self, symbol: str):
         """Mark entry time for cooldown tracking."""
-        self._last_entry[symbol] = datetime.now(timezone.utc)
+        self._last_entry[symbol] = get_current_time()
     
     def detect_flip(self, df_4h: pd.DataFrame) -> Optional[str]:
         """
@@ -249,7 +249,7 @@ class BaseStrategy(ABC):
             take_profit_9=tps[8],
             take_profit_10=tps[9],
             strategy_id=self.strategy_id,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=get_current_time().isoformat(),
             reason=f"4H HA flip {flip}. {reason}"
         )
 

@@ -15,6 +15,7 @@ from ..storage import storage, Trade, TradeStatus
 from ..strategy import get_all_strategies, get_strategy, STRATEGIES
 from ..paper_trader import paper_trader
 from ..scanner import scanner
+from ..config import get_current_time
 
 router = APIRouter(prefix="/api", tags=["trading"])
 
@@ -529,7 +530,6 @@ async def get_ha_status():
     """Get current HA status for all monitored symbols."""
     from ..live_trader import get_live_trader
     from ..indicators import calculate_heikin_ashi
-    from datetime import datetime, timezone
     
     trader = get_live_trader()
     symbols = scanner.get_top_futures_symbols()
@@ -568,13 +568,34 @@ async def get_ha_status():
     return {"ha_status": ha_status, "count": len(ha_status)}
 
 
-@router.get("/fetch/status")
-async def get_fetch_status():
-    """Get status of data fetching."""
-    return scanner.get_scan_status()
+# ============ HEARTBEAT & DEBUG ENDPOINTS ============
 
+@router.get("/heartbeat")
+async def get_heartbeat():
+    """
+    Heartbeat endpoint — dashboard should poll this to detect stale scans.
+    If last_scan_end is more than 10 minutes old, something is wrong.
+    """
+    from ..main import scan_heartbeat
+    
+    hb = scan_heartbeat.copy()
+    
+    # Calculate staleness
+    if hb.get("last_scan_end"):
+        try:
+            last_end = datetime.fromisoformat(hb["last_scan_end"])
+            age_seconds = (get_current_time() - last_end).total_seconds()
+            hb["seconds_since_last_scan"] = round(age_seconds)
+            hb["healthy"] = age_seconds < 600  # Healthy if scanned within 10 min
+        except:
+            hb["seconds_since_last_scan"] = None
+            hb["healthy"] = False
+    else:
+        hb["seconds_since_last_scan"] = None
+        hb["healthy"] = False
+    
+    return hb
 
-# ============ DEBUG ENDPOINT ============
 
 @router.get("/debug/scan-info")
 async def get_debug_scan_info():
@@ -582,6 +603,7 @@ async def get_debug_scan_info():
     from ..live_trader import get_live_trader
     from ..indicators import calculate_heikin_ashi
     from ..config import BYBIT_TESTNET, LIVE_STRATEGY
+    from ..main import scan_heartbeat
     
     trader = get_live_trader()
     symbols = scanner.get_top_futures_symbols()
@@ -600,7 +622,7 @@ async def get_debug_scan_info():
                 "second_last_candle_time": str(df_4h.iloc[-2]['timestamp']) if len(df_4h) >= 2 else None,
                 "last_ha_close": float(df_ha.iloc[-1]['HA_close']),
                 "last_ha_open": float(df_ha.iloc[-1]['HA_open']),
-                "last_candle_state": "bullish" if df_ha.iloc[-1]['HA_close'] > df_ha.iloc[-1]['HA_open'] else "bearish",
+                "current_forming_state": "bullish" if df_ha.iloc[-1]['HA_close'] > df_ha.iloc[-1]['HA_open'] else "bearish",
                 "completed_candle_state": "bullish" if df_ha.iloc[-2]['HA_close'] > df_ha.iloc[-2]['HA_open'] else "bearish" if len(df_ha) >= 2 else "N/A",
             }
     
@@ -612,5 +634,7 @@ async def get_debug_scan_info():
         "recorded_ha_states": len(trader.ha_states),
         "tracked_positions": list(trader.positions.keys()),
         "sample": sample_info,
-        "ha_states_snapshot": dict(list(trader.ha_states.items())[:10])
+        "ha_states_snapshot": dict(list(trader.ha_states.items())[:10]),
+        "heartbeat": scan_heartbeat,
+        "scanner": scanner.get_diagnostics(),
     }

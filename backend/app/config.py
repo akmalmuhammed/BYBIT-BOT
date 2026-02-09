@@ -10,11 +10,31 @@ from pathlib import Path
 
 load_dotenv()
 
+"""
+Configuration for Paper Trading System
+
+FIXES:
+- BYBIT_TESTNET defaults to false (was true, causing data mismatch)
+"""
+import os
+from dotenv import load_dotenv
+from pathlib import Path
+from datetime import timezone, timedelta, datetime
+
+load_dotenv()
+
 # Bybit API
 BYBIT_API_KEY = os.getenv("BYBIT_API_KEY", "")
 BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET", "")
 # IMPORTANT: Set to "false" for mainnet data. "true" uses testnet which has different prices!
 BYBIT_TESTNET = os.getenv("BYBIT_TESTNET", "false").lower() == "true"
+
+# Timezone Configuration (UTC+3)
+TIMEZONE = timezone(timedelta(hours=3))
+
+def get_current_time() -> datetime:
+    """Get current time in project timezone."""
+    return datetime.now(TIMEZONE)
 
 # Data paths
 BASE_DIR = Path(__file__).parent.parent

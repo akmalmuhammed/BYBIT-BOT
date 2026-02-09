@@ -11,7 +11,7 @@ from .storage import storage, Trade, Position, TradeStatus, Side
 from .strategy import Signal, get_all_strategies, BaseStrategy
 from .scanner import scanner
 from .indicators import add_all_indicators
-from .config import LEVERAGE
+from .config import LEVERAGE, get_current_time
 
 
 class PaperTrader:
@@ -45,7 +45,7 @@ class PaperTrader:
         
         # Create trade record
         trade_id = str(uuid.uuid4())[:8]
-        now = datetime.now(timezone.utc).isoformat()
+        now = get_current_time().isoformat()
         
         trade = Trade(
             id=trade_id,
@@ -202,7 +202,7 @@ class PaperTrader:
             pnl_usd = trade_size_usd * (leveraged_pnl_pct / 100)
             
             trade.exit_price = exit_price
-            trade.exit_time = datetime.now(timezone.utc).isoformat()
+            trade.exit_time = get_current_time().isoformat()
             trade.pnl_pct = round(leveraged_pnl_pct, 2)  # Store leveraged PnL
             trade.pnl_usd = round(pnl_usd, 2)
             trade.status = TradeStatus.CLOSED.value

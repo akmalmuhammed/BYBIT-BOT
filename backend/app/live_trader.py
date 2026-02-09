@@ -15,7 +15,7 @@ import threading
 
 from .bybit_client import get_client, BybitClient
 from .strategy import Signal
-from .config import LEVERAGE, DATA_DIR
+from .config import LEVERAGE, DATA_DIR, get_current_time
 from .activity_logger import logger
 
 
@@ -183,7 +183,7 @@ class LiveTrader:
                 "entry_price": signal.entry_price,
                 "stop_loss": signal.stop_loss,
                 "current_sl": signal.stop_loss,
-                "entry_time": datetime.now(timezone.utc).isoformat(),
+                "entry_time": get_current_time().isoformat(),
                 "take_profits": [
                     signal.take_profit_1, signal.take_profit_2, signal.take_profit_3,
                     signal.take_profit_4, signal.take_profit_5, signal.take_profit_6,
