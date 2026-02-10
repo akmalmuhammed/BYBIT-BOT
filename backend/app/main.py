@@ -125,10 +125,10 @@ def _blocking_scan_cycle():
                             else:
                                 print(f"⚠️ Signal filtered for {symbol} (cooldown/data)")
             
-            # Save candles
-            for tf, df in data.items():
-                if df is not None and not df.empty:
-                    scanner.save_candles(symbol, tf, df)
+            # Save candles - handled by scanner.fetch_multi_timeframe now
+            # for tf, df in data.items():
+            #     if df is not None and not df.empty:
+            #         scanner.save_candles(symbol, tf, df)
             
             # ==============================
             # PAPER TRADING

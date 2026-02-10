@@ -103,20 +103,30 @@ class BybitScanner:
     def fetch_klines(self, 
                      symbol: str, 
                      interval: str = "5", 
-                     limit: int = 100) -> pd.DataFrame:
+                     limit: int = 200,
+                     start: Optional[int] = None) -> pd.DataFrame:
         """
         Fetch kline/candlestick data for a symbol.
         Includes rate limiting and retry logic.
         """
+        # Convert limit to int if it's not
+        limit = int(limit)
+        
         for attempt in range(MAX_RETRIES + 1):
             try:
                 self._rate_limit()
-                response = self.session.get_kline(
-                    category="linear",
-                    symbol=symbol,
-                    interval=interval,
-                    limit=limit
-                )
+                
+                # Prepare args
+                kwargs = {
+                    "category": "linear",
+                    "symbol": symbol,
+                    "interval": interval,
+                    "limit": limit
+                }
+                if start is not None:
+                    kwargs["start"] = start
+                
+                response = self.session.get_kline(**kwargs)
                 
                 if response['retCode'] != 0:
                     err_msg = response.get('retMsg', 'Unknown error')
@@ -165,12 +175,57 @@ class BybitScanner:
                                symbol: str, 
                                timeframes: List[str] = ["5", "15", "60", "240"]) -> Dict[str, pd.DataFrame]:
         """
-        Fetch klines for multiple timeframes.
+        Fetch klines for multiple timeframes using incremental updates.
         """
         result = {}
         for tf in timeframes:
-            result[tf] = self.fetch_klines(symbol, interval=tf)
-            # Extra delay between timeframes for same symbol
+            # 1. Try to load existing local data
+            existing_df = self.load_candles(symbol, tf)
+            
+            new_df = pd.DataFrame()
+            
+            if not existing_df.empty:
+                # 2. If exists, fetch only what's new
+                last_ts = existing_df.iloc[-1]['timestamp']
+                # Add 1ms to avoid overlap/duplication of the last candle if it's closed? 
+                # Actually Bybit 'start' is inclusive. 
+                # If we use last_ts, we'll get the last candle again (updated) + new ones.
+                # This is good because the last candle might have been forming.
+                start_ms = int(last_ts.timestamp() * 1000)
+                
+                # Use a smaller limit for incremental updates
+                new_df = self.fetch_klines(symbol, interval=tf, start=start_ms, limit=50)
+            else:
+                # 3. If fresh, fetch full history (200)
+                new_df = self.fetch_klines(symbol, interval=tf, limit=200)
+            
+            # 4. Merge and Save
+            if not new_df.empty:
+                if not existing_df.empty:
+                    # Determine where to cut existing_df to avoid duplicates
+                    # We accept that new_df provides the source of truth for overlapping timestamps
+                    # (e.g. updating the previously forming candle)
+                    
+                    # Convert to same timezone for comparison if needed (both should be UTC/aware)
+                    
+                    # Combine: keep all existing that are OLDER than the new data's first timestamp
+                    first_new_ts = new_df.iloc[0]['timestamp']
+                    existing_df = existing_df[existing_df['timestamp'] < first_new_ts]
+                    
+                    combined = pd.concat([existing_df, new_df])
+                else:
+                    combined = new_df
+                
+                # Trim to prevent infinite growth (keep last 300)
+                if len(combined) > 300:
+                    combined = combined.tail(300)
+                
+                self.save_candles(symbol, tf, combined)
+                result[tf] = combined
+            else:
+                # Fetch failed, stick with what we have
+                result[tf] = existing_df
+            
         return result
     
     def save_candles(self, symbol: str, timeframe: str, df: pd.DataFrame):
