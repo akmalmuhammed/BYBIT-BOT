@@ -87,7 +87,72 @@ The monitoring strategy is **Heikin-Ashi 4H Flip**.
 
 ---
 
-## 4. The Strategy Details
+## 4. Technical Deep Dive: Signals & Strategy
+
+### 📊 Heikin-Ashi (HA) Calculation
+
+The bot calculates HA candles mathematically to filter out market noise. We use the standard formulas (matching TradingView):
+
+**1. HA Close** (Average price):
+
+```python
+HA_Close = (Open + High + Low + Close) / 4
+```
+
+**2. HA Open** (Midpoint of previous HA candle):
+
+```python
+# First candle:
+HA_Open = (Open + Close) / 2
+# Subsequent candles:
+HA_Open = (Prev_HA_Open + Prev_HA_Close) / 2
+```
+
+**3. HA High / Low**:
+
+```python
+HA_High = Max(High, HA_Open, HA_Close)
+HA_Low = Min(Low, HA_Open, HA_Close)
+```
+
+**Interpretation**:
+
+- **Bullish (Green)**: `HA_Close > HA_Open`
+- **Bearish (Red)**: `HA_Close < HA_Open`
+
+### 🔄 The 5-Minute Scan Cycle
+
+Although the strategy is based on **4-Hour (4H)** candles, the bot runs every **5 minutes** to ensure it catches the candle close immediately.
+
+**Workflow every 5 minutes:**
+
+1.  **Fetch Data**: `scanner.py` gets the latest Price data for all symbols.
+2.  **Calculate HA**: Computes the HA candles for the 4H timeframe.
+3.  **Identify Candles**:
+    - `Candle[-1]`: **Forming** (Current incomplete candle).
+    - `Candle[-2]`: **Completed** (The one that just closed).
+    - `Candle[-3]`: **Previous** (The one before that).
+4.  **Detect Flip**:
+    - Logic checks `Candle[-3]` vs `Candle[-2]`.
+    - **BULLISH FLIP**: If `[-3]` was Red/Bearish AND `[-2]` is Green/Bullish.
+    - **BEARISH FLIP**: If `[-3]` was Green/Bullish AND `[-2]` is Red/Bearish.
+5.  **State Tracking (Debounce)**:
+    - Because `Candle[-2]` remains the same for 4 hours, a naive bot would signal "FLIP" every 5 minutes.
+    - **Solution**: `live_trader.py` maintains a state memory (`ha_states`). It only fires a signal if the _detected state changes_ from what it last recorded.
+
+### 📐 Usage of Data & Timeframes
+
+The bot uses multiple timeframes for different purposes:
+
+| Timeframe           | Usage                                                                                                                      |
+| :------------------ | :------------------------------------------------------------------------------------------------------------------------- |
+| **4 Hour (4H)**     | **Trend Direction**. The primary source of truth for BUY/SELL signals.                                                     |
+| **5 Minute (5m)**   | **Execution & Filters**. Used to get the current "live" price for entry and calculate RSI/EMA for Strategy Variations B/C. |
+| **15 Minute (15m)** | **Volatility (ATR)**. Used to calculate the size of the Stop Loss dynamic to recent volatility.                            |
+
+---
+
+## 5. The Strategy Details
 
 **Name**: `HA_4H_FLIP_V1`
 
